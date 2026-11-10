@@ -19,6 +19,7 @@ from deluge.bencode import bencode
 from deluge.conftest import BaseTestCase
 from deluge.core.core import Core
 from deluge.core.rpcserver import RPCServer
+from deluge.core.torrentmanager import _torrent_info_from_bytes
 from deluge.error import InvalidTorrentError
 
 from . import common
@@ -69,7 +70,7 @@ class TestTorrentmanager(BaseTestCase):
         from deluge._libtorrent import lt
 
         with open(common.get_test_data_file('test.torrent'), 'rb') as _file:
-            t_info = lt.torrent_info(lt.bdecode(_file.read()))
+            t_info = _torrent_info_from_bytes(_file.read())
         mock_alert = mock.MagicMock()
         mock_alert.handle.info_hash = mock.MagicMock(
             return_value='ab570cdd5a17ea1b61e970bb72047de141bce173'
@@ -143,7 +144,7 @@ class TestTorrentmanager(BaseTestCase):
         from deluge._libtorrent import lt
 
         with open(common.get_test_data_file('test.torrent'), 'rb') as _file:
-            torrent_info = lt.torrent_info(lt.bdecode(_file.read()))
+            torrent_info = _torrent_info_from_bytes(_file.read())
         options = self.tm._build_torrent_options({'download_location': os.getcwd()})
         resume_data = lt.bencode({'test': b'resume'})
         params = mock.MagicMock()

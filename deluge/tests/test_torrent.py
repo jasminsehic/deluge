@@ -23,7 +23,11 @@ from deluge.conftest import BaseTestCase
 from deluge.core.core import Core
 from deluge.core.rpcserver import RPCServer
 from deluge.core.torrent import Torrent, _torrent_status_flag
-from deluge.core.torrentmanager import TorrentManager, TorrentState
+from deluge.core.torrentmanager import (
+    TorrentManager,
+    TorrentState,
+    _torrent_info_from_bytes,
+)
 
 try:
     from unittest.mock import AsyncMock
@@ -101,7 +105,7 @@ class TestTorrent(BaseTestCase):
     def get_torrent_atp(self, filename):
         filename = common.get_test_data_file(filename)
         with open(filename, 'rb') as _file:
-            info = lt.torrent_info(lt.bdecode(_file.read()))
+            info = _torrent_info_from_bytes(_file.read())
         atp = {
             'ti': info,
             'save_path': os.getcwd(),

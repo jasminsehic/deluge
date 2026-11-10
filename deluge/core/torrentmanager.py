@@ -55,6 +55,13 @@ from deluge.event import (
 
 log = logging.getLogger(__name__)
 
+def _torrent_info_from_bytes(filedump):
+    """Parse a .torrent file using the binding supported by this libtorrent API."""
+    if getattr(lt, 'api_version', 1) >= 3:
+        return lt.load_torrent_buffer(filedump).ti
+    return lt.torrent_info(lt.bdecode(filedump))
+
+
 LT_DEFAULT_ADD_TORRENT_FLAGS = (
     lt.torrent_flags.paused
     | lt.torrent_flags.auto_managed
@@ -344,7 +351,7 @@ class TorrentManager(component.Component):
         if log.isEnabledFor(logging.DEBUG):
             log.debug('Attempting to extract torrent_info from %s', filepath)
         try:
-            torrent_info = lt.torrent_info(Path(filepath).read_bytes())
+            torrent_info = _torrent_info_from_bytes(Path(filepath).read_bytes())
         except (RuntimeError, OSError) as ex:
             log.warning('Unable to open torrent file %s: %s', filepath, ex)
         else:
@@ -541,7 +548,7 @@ class TorrentManager(component.Component):
 
         if filedump:
             try:
-                torrent_info = lt.torrent_info(lt.bdecode(filedump))
+                torrent_info = _torrent_info_from_bytes(filedump)
             except RuntimeError as ex:
                 raise AddTorrentError(
                     'Unable to add torrent, decoding filedump failed: %s' % ex
@@ -606,7 +613,7 @@ class TorrentManager(component.Component):
 
         if filedump:
             try:
-                torrent_info = lt.torrent_info(lt.bdecode(filedump))
+                torrent_info = _torrent_info_from_bytes(filedump)
             except RuntimeError as ex:
                 raise AddTorrentError(
                     'Unable to add torrent, decoding filedump failed: %s' % ex
@@ -1454,7 +1461,10 @@ class TorrentManager(component.Component):
         # libtorrent 1.2 added endpoint struct to each tracker. to prevent false updates
         # we will need to verify that at least one endpoint to the errored tracker is working
         for tracker in torrent.handle.trackers():
-            if tracker['url'] == alert.url:
+            tracker_url = (
+                alert.tracker_url() if hasattr(alert, 'tracker_url') else alert.url
+            )
+            if tracker['url'] == tracker_url:
                 if any(
                     endpoint['last_error']['value'] == 0
                     for endpoint in tracker['endpoints']
