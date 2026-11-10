@@ -127,6 +127,21 @@ class TestWebTorrent(BaseTestCase):
 
         return component.shutdown().addCallback(cleanup)
 
+    def test_current_session_state_roundtrip(self):
+        from deluge._libtorrent import lt
+
+        if getattr(lt, 'api_version', 1) < 3:
+            pytest.skip('Requires session_params API')
+
+        self.core.apply_session_setting('connections_limit', 137)
+        self.core._save_session_state()
+        params = self.core._load_session_state()
+        assert isinstance(params, lt.session_params)
+        assert params.settings['connections_limit'] == 137
+
+        restored = lt.session(params)
+        assert restored.get_settings()['connections_limit'] == 137
+
     def test_session_preferences_with_libtorrent_2_1(self):
         prefs = component.get('PreferencesManager')
         session_pref_keys = (

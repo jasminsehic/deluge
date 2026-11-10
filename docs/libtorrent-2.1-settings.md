@@ -30,3 +30,9 @@ dictionary path for older ABI builds.
 The RTC native transfer test and Deluge loopback WSS announce test verify
 different portions of the integration. A complete Deluge-to-WebRTC peer
 piece transfer via live WebSocket signaling is not yet part of this suite.
+
+The libtorrent 2.1 ABI uses `session.session_state()` and
+`write_session_params_buf()` for persistence, and `read_session_params()`
+before constructing a session to restore DHT and other state. The old
+`session.save_state()`/`session.load_state()` pair does not restore modern
+session state. A native round-trip test covers this path.

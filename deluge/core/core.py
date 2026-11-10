@@ -148,10 +148,20 @@ class Core(component.Component):
         }
         if getattr(lt, 'api_version', 1) == 1:
             settings_pack['ignore_resume_timestamps'] = True
-        self.session = lt.session(settings_pack, flags=0)
-
-        # Load the settings, if available.
-        self._load_session_state()
+        if getattr(lt, 'api_version', 1) >= 3:
+            # Current libtorrent restores session state through session_params
+            # at construction time. The old load_state method is a no-op.
+            params = self._load_session_state()
+            if params is not None:
+                saved_settings = params.settings
+                saved_settings.update(settings_pack)
+                params.settings = saved_settings
+                self.session = lt.session(params)
+            else:
+                self.session = lt.session(settings_pack, flags=0)
+        else:
+            self.session = lt.session(settings_pack, flags=0)
+            self._load_session_state()
 
         # Enable libtorrent extensions
         # Allows peers to download the metadata from the swarm directly
@@ -355,7 +365,11 @@ class Core(component.Component):
             log.info('Saving the %s at: %s', filename, filepath)
             try:
                 with open(filepath_tmp, 'wb') as _file:
-                    _file.write(lt.bencode(self.session.save_state()))
+                    if getattr(lt, 'api_version', 1) >= 3:
+                        state = lt.write_session_params_buf(self.session.session_state())
+                    else:
+                        state = lt.bencode(self.session.save_state())
+                    _file.write(state)
                     _file.flush()
                     os.fsync(_file.fileno())
                 shutil.move(filepath_tmp, filepath)
@@ -365,12 +379,8 @@ class Core(component.Component):
                     log.info('Restoring backup of %s from: %s', filename, filepath_bak)
                     shutil.move(filepath_bak, filepath)
 
-    def _load_session_state(self) -> dict:
-        """Loads the libtorrent session state
-
-        Returns:
-            A libtorrent sesion state, empty dict if unable to load it.
-        """
+    def _load_session_state(self):
+        """Load the current session_params, or apply legacy session state."""
         filename = 'session.state'
         filepath = get_config_dir(filename)
         filepath_bak = filepath + '.bak'
@@ -379,12 +389,20 @@ class Core(component.Component):
             log.debug('Opening %s for load: %s', filename, _filepath)
             try:
                 with open(_filepath, 'rb') as _file:
-                    state = lt.bdecode(_file.read())
-            except (OSError, EOFError, RuntimeError) as ex:
+                    data = _file.read()
+                if getattr(lt, 'api_version', 1) >= 3:
+                    state = lt.read_session_params(data)
+                else:
+                    state = lt.bdecode(data)
+            except (OSError, EOFError, RuntimeError, ValueError) as ex:
                 log.warning('Unable to load %s: %s', _filepath, ex)
             else:
                 log.info('Successfully loaded %s: %s', filename, _filepath)
-                self.session.load_state(state)
+                if getattr(lt, 'api_version', 1) < 3:
+                    self.session.load_state(state)
+                return state
+
+        return None
 
     def _on_alert_session_stats(self, alert):
         """The handler for libtorrent session stats alert"""
