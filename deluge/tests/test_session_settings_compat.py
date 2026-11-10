@@ -24,9 +24,7 @@ def test_legacy_settings_are_ignored_only_when_unavailable():
     core.session.apply_settings.assert_called_once_with(
         {'connections_limit': 300, 'peer_dscp': 16}
     )
-    assert {call.args[-1] for call in warning.call_args_list} == (
-        REMOVED_SESSION_SETTINGS
-    )
+    assert {call.args[-1] for call in warning.call_args_list} == REMOVED_SESSION_SETTINGS
 
 
 def test_legacy_settings_are_retained_when_supported():
