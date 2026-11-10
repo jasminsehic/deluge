@@ -366,7 +366,9 @@ class Core(component.Component):
             try:
                 with open(filepath_tmp, 'wb') as _file:
                     if getattr(lt, 'api_version', 1) >= 3:
-                        state = lt.write_session_params_buf(self.session.session_state())
+                        state = lt.write_session_params_buf(
+                            self.session.session_state()
+                        )
                     else:
                         state = lt.bencode(self.session.save_state())
                     _file.write(state)
