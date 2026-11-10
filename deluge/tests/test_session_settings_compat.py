@@ -14,17 +14,19 @@ def make_core(settings):
     return SimpleNamespace(session=session)
 
 
-def test_legacy_settings_are_ignored_only_when_unavailable(caplog):
+def test_legacy_settings_are_ignored_only_when_unavailable():
     core = make_core({'connections_limit': 200, 'peer_dscp': 0})
     changes = {name: 123 for name in REMOVED_SESSION_SETTINGS}
     changes.update({'connections_limit': 300, 'peer_tos': 16})
-    Core.apply_session_settings(core, changes)
+    with mock.patch('deluge.core.core.log.warning') as warning:
+        Core.apply_session_settings(core, changes)
 
     core.session.apply_settings.assert_called_once_with(
         {'connections_limit': 300, 'peer_dscp': 16}
     )
-    for name in REMOVED_SESSION_SETTINGS:
-        assert name in caplog.text
+    assert {call.args[-1] for call in warning.call_args_list} == (
+        REMOVED_SESSION_SETTINGS
+    )
 
 
 def test_legacy_settings_are_retained_when_supported():
