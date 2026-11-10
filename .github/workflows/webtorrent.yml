@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set fork development package version
-        run: printf '2.2.0.dev0\\n' > deluge/RELEASE-VERSION
+        run: echo 2.2.0.dev0 > deluge/RELEASE-VERSION
 
       - name: Check out WebTorrent-enabled libtorrent and submodules
         uses: actions/checkout@v4
