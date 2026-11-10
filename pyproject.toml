@@ -13,6 +13,7 @@ markers = [
     "security: Security related tests",
     "slow: Tests that are particularly slow",
     "internet: Tests that require internet connectivity",
+    "webtorrent: Tests requiring WebTorrent-enabled libtorrent",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:gi",
