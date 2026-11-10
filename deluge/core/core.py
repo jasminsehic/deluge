@@ -136,19 +136,6 @@ class Core(component.Component):
                     'unsupported privacy requirement'
                 )
 
-        if config.get('webtorrent_relay_only'):
-            # Inspect session_params without opening sockets. A missing
-            # relay-only capability must not fall back to direct RTC peers.
-            supports_relay_only = (
-                getattr(lt, 'api_version', 1) >= 3
-                and 'webtorrent_relay_only' in lt.session_params().settings
-            )
-            if not supports_relay_only:
-                raise ValueError(
-                    'WebTorrent relay-only mode is not supported by libtorrent; '
-                    'refusing to start a network session'
-                )
-
         component.Component.__init__(self, 'Core')
 
         # Start the libtorrent session.
