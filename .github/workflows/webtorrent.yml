@@ -40,6 +40,13 @@ jobs:
           "$GITHUB_WORKSPACE/.venv/bin/python" -m pip uninstall -y libtorrent
           "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install --no-deps -e ./deluge
 
+      - name: Restore compiled libtorrent build
+        id: native-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: libtorrent-build
+          key: rtc-lt-0bc49658-ubuntu2404-boost183-abi3-v1
+
       - name: Configure libtorrent 2.1 with WebTorrent
         run: |
           cmake -S libtorrent-src -B libtorrent-build -G Ninja \
@@ -55,6 +62,13 @@ jobs:
 
       - name: Build native Python bindings and RTC transfer executable
         run: cmake --build libtorrent-build --parallel 2 --target python-libtorrent test_webtorrent_transfer
+
+      - name: Cache compiled libtorrent build
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: libtorrent-build
+          key: rtc-lt-0bc49658-ubuntu2404-boost183-abi3-v1
 
       - name: Verify RTC peer piece and metadata transfers
         run: ctest --test-dir libtorrent-build --output-on-failure -R '^test_webtorrent_transfer$'
