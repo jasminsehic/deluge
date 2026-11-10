@@ -16,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: deluge
+          fetch-depth: 0
 
       - name: Check out WebTorrent-enabled libtorrent and submodules
         uses: actions/checkout@v4
