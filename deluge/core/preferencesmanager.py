@@ -179,7 +179,10 @@ class PreferencesManager(component.Component):
         on_set_func = getattr(self, '_on_set_' + key, None)
         if on_set_func:
             if log.isEnabledFor(logging.DEBUG):
-                log.debug('Config key: %s set to %s..', key, value)
+                if key == 'webtorrent_turn_servers':
+                    log.debug('Config key: %s set to <redacted>', key)
+                else:
+                    log.debug('Config key: %s set to %s..', key, value)
             on_set_func(key, value)
 
     def _on_config_value_change(self, key, value):
