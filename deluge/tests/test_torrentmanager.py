@@ -67,8 +67,6 @@ class TestTorrentmanager(BaseTestCase):
         assert self.tm.remove(torrent_id, False)
 
     async def test_prefetch_metadata(self):
-        from deluge._libtorrent import lt
-
         with open(common.get_test_data_file('test.torrent'), 'rb') as _file:
             t_info = _torrent_info_from_bytes(_file.read())
         mock_alert = mock.MagicMock()

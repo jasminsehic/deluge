@@ -55,6 +55,7 @@ from deluge.event import (
 
 log = logging.getLogger(__name__)
 
+
 def _torrent_info_from_bytes(filedump):
     """Parse a .torrent file using the binding supported by this libtorrent API."""
     if getattr(lt, 'api_version', 1) >= 3:
