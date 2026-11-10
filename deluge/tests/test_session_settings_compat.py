@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from deluge.core.core import Core, REMOVED_SESSION_SETTINGS
+from deluge.core.core import REMOVED_SESSION_SETTINGS, Core
 
 
 def make_core(settings):
@@ -37,9 +37,7 @@ def test_legacy_settings_are_retained_when_supported():
 def test_unsupported_force_proxy_never_silently_disappears():
     core = make_core({'proxy_type': 0})
     with pytest.raises(ValueError, match='force_proxy'):
-        Core.apply_session_settings(
-            core, {'proxy_type': 2, 'force_proxy': True}
-        )
+        Core.apply_session_settings(core, {'proxy_type': 2, 'force_proxy': True})
     core.session.apply_settings.assert_not_called()
 
 
