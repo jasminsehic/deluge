@@ -34,7 +34,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake g++ libssl-dev libboost-python-dev libboost-system-dev python3-dev python3-pip
           python3 -m pip install --user -r deluge/requirements-ci.txt 'websockets==13.1'
-          python3 -m pip install --user -e deluge
+          python3 -m pip install --user --no-build-isolation --no-deps ./deluge
 
       - name: Configure libtorrent 2.1 with WebTorrent
         run: |
