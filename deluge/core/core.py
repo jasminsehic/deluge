@@ -36,7 +36,7 @@ from deluge.core.authmanager import (
 from deluge.core.eventmanager import EventManager
 from deluge.core.filtermanager import FilterManager
 from deluge.core.pluginmanager import PluginManager
-from deluge.core.preferencesmanager import PreferencesManager
+from deluge.core.preferencesmanager import DEFAULT_PREFS, PreferencesManager
 from deluge.core.rpcserver import export
 from deluge.core.torrentmanager import TorrentManager
 from deluge.decorators import deprecated, maybe_coroutine
@@ -121,6 +121,21 @@ class Core(component.Component):
     def __init__(
         self, listen_interface=None, outgoing_interface=None, read_only_config_keys=None
     ):
+        # The removed force_proxy option cannot guarantee network isolation in
+        # modern libtorrent. Reject such a saved configuration *before* opening
+        # a session and any sockets.
+        if getattr(lt, 'api_version', 1) >= 2:
+            config = ConfigManager('core.conf', DEFAULT_PREFS)
+            proxy = config.get('proxy') or {}
+            old_proxies = config.get('proxies') or {}
+            peer_proxy = old_proxies.get('peer') or {}
+            if proxy.get('force_proxy') or peer_proxy.get('force_proxy'):
+                raise ValueError(
+                    'force_proxy is not supported by this libtorrent build; '
+                    'Deluge will not start a network session with this '
+                    'unsupported privacy requirement'
+                )
+
         component.Component.__init__(self, 'Core')
 
         # Start the libtorrent session.
@@ -265,9 +280,10 @@ class Core(component.Component):
                 compatible['peer_dscp'] = value
             elif key == 'force_proxy':
                 if value:
+                    self.session.pause()
                     raise ValueError(
                         'This libtorrent build cannot enforce force_proxy; '
-                        'refusing to ignore the requested privacy setting'
+                        'the running session has been paused instead'
                     )
             elif key in REMOVED_SESSION_SETTINGS:
                 log.warning(

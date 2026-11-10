@@ -39,6 +39,21 @@ def test_unsupported_force_proxy_never_silently_disappears():
     with pytest.raises(ValueError, match='force_proxy'):
         Core.apply_session_settings(core, {'proxy_type': 2, 'force_proxy': True})
     core.session.apply_settings.assert_not_called()
+    core.session.pause.assert_called_once_with()
+
+
+def test_force_proxy_configuration_is_rejected_before_session_start():
+    from deluge._libtorrent import lt
+
+    if getattr(lt, 'api_version', 1) < 2:
+        pytest.skip('This libtorrent API still supports force_proxy')
+
+    saved_config = {'proxy': {'force_proxy': True}}
+    with mock.patch('deluge.core.core.ConfigManager', return_value=saved_config):
+        with mock.patch('deluge.core.core.lt.session') as session:
+            with pytest.raises(ValueError, match='force_proxy'):
+                Core()
+            session.assert_not_called()
 
 
 def test_disabled_removed_force_proxy_can_be_ignored():
