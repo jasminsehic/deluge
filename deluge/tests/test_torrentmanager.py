@@ -158,8 +158,30 @@ class TestTorrentmanager(BaseTestCase):
         assert torrent_id == str(torrent_info.info_hash())
         assert result is params
         assert params.ti is torrent_info
-        assert params.save_path == os.getcwd().encode('utf8')
+        assert params.save_path == os.getcwd()
         read_resume_data.assert_called_once_with(resume_data)
+
+    def test_build_magnet_params_with_libtorrent_2_1(self):
+        from deluge._libtorrent import lt
+
+        if getattr(lt, 'api_version', 1) < 3:
+            pytest.skip('Requires current add_torrent_params API')
+
+        info_hash = 'ab570cdd5a17ea1b61e970bb72047de141bce173'
+        magnet = (
+            f'magnet:?xt=urn:btih:{info_hash}'
+            '&tr=wss%3A%2F%2Ftracker.example.com%2Fannounce'
+        )
+        options = self.tm._build_torrent_options({'download_location': os.getcwd()})
+        torrent_id, params = self.tm._build_torrent_params(
+            magnet=magnet, options=options
+        )
+
+        assert torrent_id == info_hash
+        assert isinstance(params, lt.add_torrent_params)
+        assert str(params.info_hashes.v1) == info_hash
+        assert params.trackers == ['wss://tracker.example.com/announce']
+        assert params.save_path == os.getcwd()
 
     def test_open_state(self):
         """Open a state with a UTF-8 encoded torrent filename."""

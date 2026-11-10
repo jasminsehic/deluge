@@ -104,6 +104,18 @@ SESSION_RATES_MAPPING = {
 
 DELUGE_VER = deluge.common.get_version()
 
+# Legacy settings without a direct equivalent in libtorrent's current session API.
+# Keep them in Deluge's configuration for older supported libtorrent builds.
+REMOVED_SESSION_SETTINGS = frozenset(
+    {
+        'half_open_limit',
+        'ignore_limits_on_local_network',
+        'cache_size',
+        'cache_expiry',
+        'ignore_resume_timestamps',
+    }
+)
+
 
 class Core(component.Component):
     def __init__(
@@ -119,7 +131,7 @@ class Core(component.Component):
             'peer_fingerprint': peer_id,
             'user_agent': user_agent,
         }
-        if deluge.common.VersionSplit(LT_VERSION) < deluge.common.VersionSplit('2.1'):
+        if getattr(lt, 'api_version', 1) == 1:
             settings_pack['ignore_resume_timestamps'] = True
         self.session = lt.session(settings_pack, flags=0)
 
@@ -244,7 +256,30 @@ class Core(component.Component):
         Args:
             settings: A dict of lt session settings to apply.
         """
-        self.session.apply_settings(settings)
+        supported = self.session.get_settings()
+        compatible = {}
+        for key, value in settings.items():
+            if key in supported:
+                compatible[key] = value
+            elif key == 'peer_tos' and 'peer_dscp' in supported:
+                compatible['peer_dscp'] = value
+            elif key == 'force_proxy':
+                if value:
+                    raise ValueError(
+                        'This libtorrent build cannot enforce force_proxy; '
+                        'refusing to ignore the requested privacy setting'
+                    )
+            elif key in REMOVED_SESSION_SETTINGS:
+                log.warning(
+                    'Libtorrent does not support legacy session setting %s; '
+                    'the saved Deluge preference has no effect',
+                    key,
+                )
+            else:
+                raise KeyError(f'Unsupported libtorrent session setting: {key}')
+
+        if compatible:
+            self.session.apply_settings(compatible)
 
     @staticmethod
     def _create_peer_id(version: str) -> str:

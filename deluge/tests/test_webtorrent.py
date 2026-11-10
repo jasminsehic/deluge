@@ -127,6 +127,44 @@ class TestWebTorrent(BaseTestCase):
 
         return component.shutdown().addCallback(cleanup)
 
+    def test_session_preferences_with_libtorrent_2_1(self):
+        prefs = component.get('PreferencesManager')
+        session_pref_keys = (
+            'outgoing_interface',
+            'listen_ports',
+            'random_port',
+            'outgoing_ports',
+            'random_outgoing_ports',
+            'peer_tos',
+            'dht',
+            'upnp',
+            'natpmp',
+            'lsd',
+            'enc_level',
+            'max_connections_global',
+            'max_upload_speed',
+            'max_download_speed',
+            'max_upload_slots_global',
+            'max_half_open_connections',
+            'max_connections_per_second',
+            'ignore_limits_on_local_network',
+            'share_ratio_limit',
+            'seed_time_ratio_limit',
+            'seed_time_limit',
+            'max_active_downloading',
+            'max_active_seeding',
+            'max_active_limit',
+            'dont_count_slow_torrents',
+            'announce_to_all_tiers',
+            'proxy',
+            'rate_limit_ip_overhead',
+            'cache_size',
+            'cache_expiry',
+            'auto_manage_prefer_seeds',
+        )
+        for key in session_pref_keys:
+            prefs.do_config_set_func(key, prefs.config[key])
+
     @pytest_twisted.inlineCallbacks
     def test_wss_tracker_announces_rtc_offers_from_deluge(self):
         settings = self.core.session.get_settings()

@@ -444,7 +444,8 @@ class TorrentManager(component.Component):
                 add_torrent_params['name'] = magnet_info['name']
                 add_torrent_params['trackers'] = list(magnet_info['trackers'])
                 torrent_id = magnet_info['info_hash']
-                add_torrent_params['info_hash'] = bytes(bytearray.fromhex(torrent_id))
+                if getattr(lt, 'api_version', 1) < 3:
+                    add_torrent_params['info_hash'] = bytes.fromhex(torrent_id)
             else:
                 raise AddTorrentError(
                     'Unable to add magnet, invalid magnet info: %s' % magnet
@@ -487,7 +488,17 @@ class TorrentManager(component.Component):
                 else lt.bencode(resume_data)
             )
             params = lt.read_resume_data(resume_data_bytes)
+            if magnet and getattr(lt, 'api_version', 1) >= 3:
+                params.info_hashes = lt.parse_magnet_uri(magnet).info_hashes
+        elif getattr(lt, 'api_version', 1) >= 3:
+            params = lt.parse_magnet_uri(magnet) if magnet else lt.add_torrent_params()
+        else:
+            params = None
+
+        if params is not None:
             for key, value in add_torrent_params.items():
+                if key == 'save_path':
+                    value = options['download_location']
                 setattr(params, key, value)
             add_torrent_params = params
 
