@@ -38,7 +38,15 @@ warnings.resetwarnings()
         ({'last_error': {'value': 5}}, False),
         ({'info_hashes': [{'last_error': {'value': 0}}]}, True),
         ({'info_hashes': [{'last_error': {'value': 5}}]}, False),
-        ({'info_hashes': [{'last_error': {'value': 5}}, {'last_error': {'value': 0}}]}, True),
+        (
+            {
+                'info_hashes': [
+                    {'last_error': {'value': 5}},
+                    {'last_error': {'value': 0}},
+                ]
+            },
+            True,
+        ),
         ({'info_hashes': []}, False),
     ],
 )
