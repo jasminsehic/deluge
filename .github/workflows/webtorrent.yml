@@ -1,0 +1,65 @@
+name: WebTorrent / libtorrent 2.1
+
+on:
+  push:
+    branches:
+      - feature/libtorrent-2.1-webtorrent
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rtc-and-wss:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out Deluge
+        uses: actions/checkout@v4
+        with:
+          path: deluge
+
+      - name: Check out WebTorrent-enabled libtorrent and submodules
+        uses: actions/checkout@v4
+        with:
+          repository: jasminsehic/libtorrent
+          ref: 0bc49658f973321a515f73bee9b104688f3e481b
+          submodules: recursive
+          path: libtorrent-src
+
+      - name: Install build tools and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build cmake g++ libssl-dev libboost-python-dev libboost-system-dev python3-dev python3-pip
+          python3 -m pip install --user -r deluge/requirements-ci.txt 'websockets==13.1'
+          python3 -m pip install --user -e deluge
+
+      - name: Configure libtorrent 2.1 with WebTorrent
+        run: |
+          cmake -S libtorrent-src -B libtorrent-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -Dfpic=ON \
+            -Dwebtorrent=ON \
+            -Dpython-bindings=ON \
+            -Dbuild_tests=ON \
+            -Ddeprecated-functions=OFF \
+            -DPython3_EXECUTABLE=/usr/bin/python3
+
+      - name: Build native Python bindings and RTC transfer executable
+        run: cmake --build libtorrent-build --parallel 2 --target python-libtorrent test_webtorrent_transfer
+
+      - name: Verify RTC peer piece and metadata transfers
+        run: ctest --test-dir libtorrent-build --output-on-failure -R '^test_webtorrent_transfer$'
+
+      - name: Verify Deluge WSS tracker announces contain RTC offers
+        working-directory: deluge
+        env:
+          PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
+        run: |
+          python3 -c 'import libtorrent as lt; print(lt.__version__); assert tuple(map(int, lt.__version__.split(".")[:2])) >= (2, 1); assert "webtorrent_stun_server" in lt.session().get_settings()'
+          python3 -m pytest -v deluge/tests/test_webtorrent.py -m webtorrent
+
+      - name: Check Deluge regression tests with native libtorrent
+        working-directory: deluge
+        env:
+          PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
+        run: python3 -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py
