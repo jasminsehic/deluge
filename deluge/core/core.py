@@ -124,8 +124,8 @@ class Core(component.Component):
         # The removed force_proxy option cannot guarantee network isolation in
         # modern libtorrent. Reject such a saved configuration *before* opening
         # a session and any sockets.
+        config = ConfigManager('core.conf', DEFAULT_PREFS)
         if getattr(lt, 'api_version', 1) >= 2:
-            config = ConfigManager('core.conf', DEFAULT_PREFS)
             proxy = config.get('proxy') or {}
             old_proxies = config.get('proxies') or {}
             peer_proxy = old_proxies.get('peer') or {}
@@ -134,6 +134,19 @@ class Core(component.Component):
                     'force_proxy is not supported by this libtorrent build; '
                     'Deluge will not start a network session with this '
                     'unsupported privacy requirement'
+                )
+
+        if config.get('webtorrent_relay_only'):
+            # Inspect session_params without opening sockets. A missing
+            # relay-only capability must not fall back to direct RTC peers.
+            supports_relay_only = (
+                getattr(lt, 'api_version', 1) >= 3
+                and 'webtorrent_relay_only' in lt.session_params().settings
+            )
+            if not supports_relay_only:
+                raise ValueError(
+                    'WebTorrent relay-only mode is not supported by libtorrent; '
+                    'refusing to start a network session'
                 )
 
         component.Component.__init__(self, 'Core')

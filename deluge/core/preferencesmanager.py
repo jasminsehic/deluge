@@ -129,6 +129,9 @@ DEFAULT_PREFS = {
     'cache_size': 512,
     'cache_expiry': 60,
     'auto_manage_prefer_seeds': False,
+    'webtorrent_relay_only': False,
+    'webtorrent_stun_server': 'stun.l.google.com:19302',
+    'webtorrent_turn_servers': '',
     'shared': False,
     'super_seeding': False,
 }
@@ -488,6 +491,28 @@ class PreferencesManager(component.Component):
             )
 
         self.core.apply_session_settings(proxy_settings)
+
+    def _apply_webtorrent_setting(self, key, value):
+        """Apply optional RTC settings without breaking older libtorrent builds."""
+        if key in self.core.session.get_settings():
+            self.core.apply_session_setting(key, value)
+        elif key == 'webtorrent_relay_only' and value:
+            self.core.session.pause()
+            raise ValueError(
+                'WebTorrent relay-only mode is unavailable in this libtorrent '
+                'build; the session has been paused'
+            )
+        elif value != DEFAULT_PREFS[key]:
+            log.warning('Libtorrent does not support WebTorrent setting %s', key)
+
+    def _on_set_webtorrent_relay_only(self, key, value):
+        self._apply_webtorrent_setting(key, value)
+
+    def _on_set_webtorrent_stun_server(self, key, value):
+        self._apply_webtorrent_setting(key, value)
+
+    def _on_set_webtorrent_turn_servers(self, key, value):
+        self._apply_webtorrent_setting(key, value)
 
     def _on_set_rate_limit_ip_overhead(self, key, value):
         self.core.apply_session_setting('rate_limit_ip_overhead', value)

@@ -56,6 +56,17 @@ def test_force_proxy_configuration_is_rejected_before_session_start():
             session.assert_not_called()
 
 
+def test_webtorrent_relay_only_is_rejected_before_session_creation():
+    saved = {'webtorrent_relay_only': True}
+    with mock.patch('deluge.core.core.ConfigManager', return_value=saved):
+        with mock.patch('deluge.core.core.lt.session_params') as params:
+            params.return_value.settings = {'connections_limit': 200}
+            with mock.patch('deluge.core.core.lt.session') as session:
+                with pytest.raises(ValueError, match='relay-only'):
+                    Core()
+                session.assert_not_called()
+
+
 def test_disabled_removed_force_proxy_can_be_ignored():
     core = make_core({'proxy_type': 0})
     Core.apply_session_settings(core, {'proxy_type': 0, 'force_proxy': False})

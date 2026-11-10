@@ -36,3 +36,11 @@ The libtorrent 2.1 ABI uses `session.session_state()` and
 before constructing a session to restore DHT and other state. The old
 `session.save_state()`/`session.load_state()` pair does not restore modern
 session state. A native round-trip test covers this path.
+
+The fork's WebTorrent STUN, TURN and relay-only options are now persisted as
+Deluge core preferences: `webtorrent_stun_server`, `webtorrent_turn_servers`
+and `webtorrent_relay_only`. They are applied only when the libtorrent
+session advertises those settings. When relay-only is requested but unsupported,
+Deluge refuses to create a network session; a live unsupported request pauses
+the session rather than silently enabling direct RTC connections. The older
+libtorrent builds keep working with the new options at their defaults.

@@ -142,6 +142,27 @@ class TestWebTorrent(BaseTestCase):
         restored = lt.session(params)
         assert restored.get_settings()['connections_limit'] == 137
 
+    def test_webtorrent_stun_turn_and_relay_only_preferences(self):
+        prefs = component.get('PreferencesManager')
+        initial = self.core.session.get_settings()
+        values = {
+            'webtorrent_turn_servers': 'turn:127.0.0.1:3478?transport=udp',
+            'webtorrent_stun_server': 'stun:stun.l.google.com:19302',
+            'webtorrent_relay_only': True,
+        }
+        for key in values:
+            assert key in initial
+
+        try:
+            for key, value in values.items():
+                prefs.do_config_set_func(key, value)
+            updated = self.core.session.get_settings()
+            for key, value in values.items():
+                assert updated[key] == value
+        finally:
+            for key in values:
+                prefs.do_config_set_func(key, initial[key])
+
     def test_session_preferences_with_libtorrent_2_1(self):
         prefs = component.get('PreferencesManager')
         session_pref_keys = (
@@ -176,6 +197,9 @@ class TestWebTorrent(BaseTestCase):
             'cache_size',
             'cache_expiry',
             'auto_manage_prefer_seeds',
+            'webtorrent_relay_only',
+            'webtorrent_stun_server',
+            'webtorrent_turn_servers',
         )
         for key in session_pref_keys:
             prefs.do_config_set_func(key, prefs.config[key])
