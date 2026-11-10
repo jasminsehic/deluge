@@ -56,6 +56,16 @@ from deluge.event import (
 log = logging.getLogger(__name__)
 
 
+def _tracker_endpoint_has_no_error(endpoint):
+    """Inspect both legacy and current libtorrent tracker endpoint layouts."""
+    if 'last_error' in endpoint:
+        return endpoint['last_error']['value'] == 0
+    return any(
+        entry.get('last_error', {}).get('value') == 0
+        for entry in endpoint.get('info_hashes', [])
+    )
+
+
 def _torrent_info_from_bytes(filedump):
     """Parse a .torrent file using the binding supported by this libtorrent API."""
     if getattr(lt, 'api_version', 1) >= 3:
@@ -1467,7 +1477,7 @@ class TorrentManager(component.Component):
             )
             if tracker['url'] == tracker_url:
                 if any(
-                    endpoint['last_error']['value'] == 0
+                    _tracker_endpoint_has_no_error(endpoint)
                     for endpoint in tracker['endpoints']
                 ):
                     torrent.set_tracker_status('Announce OK')

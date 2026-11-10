@@ -19,13 +19,31 @@ from deluge.bencode import bencode
 from deluge.conftest import BaseTestCase
 from deluge.core.core import Core
 from deluge.core.rpcserver import RPCServer
-from deluge.core.torrentmanager import _torrent_info_from_bytes
+from deluge.core.torrentmanager import (
+    _torrent_info_from_bytes,
+    _tracker_endpoint_has_no_error,
+)
 from deluge.error import InvalidTorrentError
 
 from . import common
 
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 warnings.resetwarnings()
+
+
+@pytest.mark.parametrize(
+    ('endpoint', 'expected'),
+    [
+        ({'last_error': {'value': 0}}, True),
+        ({'last_error': {'value': 5}}, False),
+        ({'info_hashes': [{'last_error': {'value': 0}}]}, True),
+        ({'info_hashes': [{'last_error': {'value': 5}}]}, False),
+        ({'info_hashes': [{'last_error': {'value': 5}}, {'last_error': {'value': 0}}]}, True),
+        ({'info_hashes': []}, False),
+    ],
+)
+def test_tracker_endpoint_error_layout(endpoint, expected):
+    assert _tracker_endpoint_has_no_error(endpoint) == expected
 
 
 class TestTorrentmanager(BaseTestCase):
@@ -73,7 +91,7 @@ class TestTorrentmanager(BaseTestCase):
         mock_alert.handle.info_hash = mock.MagicMock(
             return_value='ab570cdd5a17ea1b61e970bb72047de141bce173'
         )
-        mock_alert.handle.get_torrent_info = mock.MagicMock(return_value=t_info)
+        mock_alert.handle.torrent_file = mock.MagicMock(return_value=t_info)
 
         magnet = 'magnet:?xt=urn:btih:ab570cdd5a17ea1b61e970bb72047de141bce173'
         d = self.tm.prefetch_metadata(magnet, 30)
