@@ -19,6 +19,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set fork development package version
+        run: printf '2.2.0.dev0\\n' > RELEASE-VERSION
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
