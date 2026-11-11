@@ -81,6 +81,12 @@ class TestMetafile:
     @pytest.mark.parametrize('piece_length', [2**14, 2**15, 2**16])
     @pytest.mark.parametrize('private', [True, False])
     def test_create_info(self, path, torrent_format, piece_length, private):
+        if (
+            VersionSplit(LT_VERSION) < VersionSplit('2.0.0.0')
+            and torrent_format != metafile.TorrentFormat.V1
+        ):
+            pytest.skip('libtorrent 1.2 cannot create BitTorrent v2/hybrid metadata')
+
         our_info, our_piece_layers = metafile.makeinfo(
             path,
             piece_length,
