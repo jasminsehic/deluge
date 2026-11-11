@@ -458,15 +458,40 @@ class TestCore(BaseTestCase):
         assert space >= 0
         assert self.core.get_free_space('/someinvalidpath') == -1
 
-    @pytest.mark.flaky(reruns=3, reruns_delay=2)
-    @pytest.mark.slow
-    def test_test_listen_port(self):
-        d = self.core.test_listen_port()
+    @pytest.mark.parametrize(
+        ('response', 'expected'),
+        [(b'1', True), (b'0', False)],
+    )
+    def test_test_listen_port(self, response, expected):
+        # Keep the regression independent of the availability of the external
+        # port-check service.
+        with (
+            mock.patch('deluge.core.core.Agent') as agent,
+            mock.patch(
+                'deluge.core.core.readBody', return_value=defer.succeed(response)
+            ),
+        ):
+            agent.return_value.request.return_value = defer.succeed(object())
+            d = self.core.test_listen_port()
 
-        def result(r):
-            assert r in (True, False)
+        def check(result):
+            assert result is expected
 
-        d.addCallback(result)
+        d.addCallback(check)
+        return d
+
+    def test_test_listen_port_unavailable(self):
+        with mock.patch('deluge.core.core.Agent') as agent:
+            agent.return_value.request.return_value = defer.fail(
+                RuntimeError('Port-check service unavailable')
+            )
+            d = self.core.test_listen_port()
+
+        def check(result):
+            # A failed check is unknown, not evidence of a closed port.
+            assert result is None
+
+        d.addCallback(check)
         return d
 
     def test_sanitize_filepath(self):
