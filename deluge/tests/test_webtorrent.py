@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pytest_twisted
@@ -232,6 +233,37 @@ class TestWebTorrent(BaseTestCase):
             return result
 
         return component.shutdown().addCallback(cleanup)
+
+    def test_current_metadata_writer_preserves_info_hash_and_wss_tracker(self):
+        """Saving received metadata must preserve its original hash and tracker."""
+        from deluge._libtorrent import lt
+        from deluge.core.torrent import Torrent
+        from deluge.tests import common
+
+        params = lt.load_torrent_buffer(
+            Path(common.get_test_data_file('test.torrent')).read_bytes()
+        )
+        info_hash = str(params.ti.info_hash())
+        tracker = 'wss://tracker.example.com/announce'
+        fake_handle = SimpleNamespace(
+            trackers=lambda: [{'url': tracker, 'tier': 0}],
+            url_seeds=lambda: [],
+        )
+        torrent = SimpleNamespace(
+            torrent_id=info_hash,
+            torrent_info=params.ti,
+            handle=fake_handle,
+            config={'copy_torrent_file': False},
+        )
+        state = Path(self.config_dir) / 'state'
+        state.mkdir(exist_ok=True)
+        Torrent.write_torrentfile(torrent)
+
+        saved = lt.load_torrent_buffer(
+            (state / f'{info_hash}.torrent').read_bytes()
+        )
+        assert str(saved.ti.info_hash()) == info_hash
+        assert saved.trackers == [tracker]
 
     def test_current_session_state_roundtrip(self):
         from deluge._libtorrent import lt
