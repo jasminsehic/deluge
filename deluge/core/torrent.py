@@ -941,22 +941,21 @@ class Torrent:
         if not self.has_metadata:
             return []
 
+        # The file_storage iterator is only exposed by libtorrent's Python
+        # bindings with ABI 1. Query file sizes by index for ABI 2/3 as well.
+        files = _get_torrent_file_storage(self.torrent_info, original=False)
         try:
-            files_progresses = zip(
-                self.handle.file_progress(),
-                _get_torrent_file_storage(self.torrent_info, original=False),
-            )
+            progress = self.handle.file_progress()
         except Exception:
-            # Handle libtorrent >=2.0.0,<=2.0.4 file_progress error
-            files_progresses = zip(
-                iter(lambda: 0, 1),
-                _get_torrent_file_storage(self.torrent_info, original=False),
-            )
+            # libtorrent 2.0.0-2.0.4 may fail to return file progress.
+            progress = []
 
-        return [
-            progress / _file.size if _file.size else 0.0
-            for progress, _file in files_progresses
-        ]
+        result = []
+        for index in range(files.num_files()):
+            size = files.file_size(index)
+            completed = progress[index] if index < len(progress) else 0
+            result.append(completed / size if size else 0.0)
+        return result
 
     def get_tracker_host(self):
         """Get the hostname of the currently connected tracker.
