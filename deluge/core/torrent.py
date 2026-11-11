@@ -1032,9 +1032,10 @@ class Torrent:
             return self.options['name']
 
         if self.has_metadata:
-            # Use the top-level folder as torrent name.
-            filename = self.get_files()[0]['path']
-            name = filename.replace('\\', '/', 1).split('/', 1)[0]
+            # File metadata and libtorrent's renamed-file view can be
+            # temporarily unavailable while restoring a session.
+            files = self.get_files()
+            name = files[0]['path'].replace('\\', '/', 1).split('/', 1)[0] if files else ''
         else:
             name = decode_bytes(self.handle.status().name)
 
