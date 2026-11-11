@@ -1476,7 +1476,7 @@ class Torrent:
                 params.trackers = [tracker['url'] for tracker in trackers]
                 params.tracker_tiers = [tracker['tier'] for tracker in trackers]
                 params.url_seeds = self.handle.url_seeds()
-                filedump = lt.write_torrent_file_buf(params)
+                filedump = lt.bencode(lt.write_torrent_file(params))
             else:
                 lt_ct = lt.create_torrent(self.torrent_info)
                 filedump = lt.bencode(lt_ct.generate())
