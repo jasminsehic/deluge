@@ -43,7 +43,7 @@ jobs:
       - name: Setup Python x64
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.10"
           architecture: x64
 
       - name: Set up MSVC
@@ -60,9 +60,9 @@ jobs:
         shell: pwsh
         run: |
           Push-Location libtorrent-src/tools
-          vcpkg install --triplet=x64-windows-static
+          vcpkg install --triplet=x64-windows-static-md
           Pop-Location
-          $openssl = Join-Path $env:GITHUB_WORKSPACE 'libtorrent-src/tools/vcpkg_installed/x64-windows-static'
+          $openssl = Join-Path $env:GITHUB_WORKSPACE 'libtorrent-src/tools/vcpkg_installed/x64-windows-static-md'
           if (!(Test-Path "$openssl/include/openssl/ssl.h")) {
             throw "OpenSSL headers missing: $openssl"
           }
