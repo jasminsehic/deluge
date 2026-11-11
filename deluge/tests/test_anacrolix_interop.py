@@ -52,7 +52,9 @@ class TestAnacrolixInterop(BaseTestCase):
 
         return component.shutdown().addCallback(cleanup)
 
-    @pytest.mark.parametrize('direction', ['anacrolix-to-deluge', 'deluge-to-anacrolix'])
+    @pytest.mark.parametrize(
+        'direction', ['anacrolix-to-deluge', 'deluge-to-anacrolix']
+    )
     @pytest_twisted.inlineCallbacks
     def test_wss_rtc_transfer_with_anacrolix(self, direction):
         """Both directions must complete verified payload transfer via RTC only."""
@@ -76,7 +78,9 @@ class TestAnacrolixInterop(BaseTestCase):
         ):
             assert active[key] is False, f'RTC-only guard failed: {key}={active[key]}'
 
-        log_root = Path(os.environ.get('ANACROLIX_INTEROP_LOG_DIR', tempfile.gettempdir()))
+        log_root = Path(
+            os.environ.get('ANACROLIX_INTEROP_LOG_DIR', tempfile.gettempdir())
+        )
         log_root.mkdir(parents=True, exist_ok=True)
         root = Path(tempfile.mkdtemp(prefix=f'{direction}-', dir=str(log_root)))
         go_dir = root / 'anacrolix'
@@ -126,10 +130,14 @@ class TestAnacrolixInterop(BaseTestCase):
                 process = subprocess.Popen(
                     [
                         binary,
-                        '-mode', mode,
-                        '-torrent', str(torrent_path),
-                        '-data', str(go_dir),
-                        '-size', str(len(payload)),
+                        '-mode',
+                        mode,
+                        '-torrent',
+                        str(torrent_path),
+                        '-data',
+                        str(go_dir),
+                        '-size',
+                        str(len(payload)),
                     ],
                     stdout=stdout,
                     stderr=subprocess.STDOUT,
@@ -139,7 +147,11 @@ class TestAnacrolixInterop(BaseTestCase):
             def go_log():
                 if stdout is not None:
                     stdout.flush()
-                return stdout_path.read_text(errors='replace') if stdout_path.exists() else ''
+                return (
+                    stdout_path.read_text(errors='replace')
+                    if stdout_path.exists()
+                    else ''
+                )
 
             def deluge_handle():
                 return self.core.torrentmanager.torrents[torrent_id].handle
@@ -179,13 +191,22 @@ class TestAnacrolixInterop(BaseTestCase):
                 )
                 assert torrent_id == info_hash
                 deadline = reactor.seconds() + 45
-                while not deluge_handle().status().is_seeding and reactor.seconds() < deadline:
+                while (
+                    not deluge_handle().status().is_seeding
+                    and reactor.seconds() < deadline
+                ):
                     yield task.deferLater(reactor, 0.2, lambda: None)
-                assert deluge_handle().status().is_seeding, 'Deluge seed file failed verification'
+                assert deluge_handle().status().is_seeding, (
+                    'Deluge seed file failed verification'
+                )
                 start_anacrolix('download')
 
             deadline = reactor.seconds() + 120
-            dest = deluge_dir / filename if direction == 'anacrolix-to-deluge' else go_dir / filename
+            dest = (
+                deluge_dir / filename
+                if direction == 'anacrolix-to-deluge'
+                else go_dir / filename
+            )
             while reactor.seconds() < deadline:
                 if direction == 'anacrolix-to-deluge':
                     finished = deluge_handle().status().is_seeding
@@ -194,19 +215,28 @@ class TestAnacrolixInterop(BaseTestCase):
                 if finished:
                     break
                 if process.poll() not in (None, 0):
-                    raise AssertionError(f'Anacrolix exited with {process.returncode}: {go_log()}')
+                    raise AssertionError(
+                        f'Anacrolix exited with {process.returncode}: {go_log()}'
+                    )
                 yield task.deferLater(reactor, 0.2, lambda: None)
 
             assert tracker.offers_relayed > 0, 'No RTC offer traversed the WSS tracker'
-            assert tracker.answers_relayed > 0, 'No RTC answer traversed the WSS tracker'
-            assert dest.is_file(), f'Downloaded file missing: {dest}'
-            assert hashlib.sha256(dest.read_bytes()).digest() == hashlib.sha256(payload).digest(), (
-                'Transferred bytes did not match the seed payload'
+            assert tracker.answers_relayed > 0, (
+                'No RTC answer traversed the WSS tracker'
             )
+            assert dest.is_file(), f'Downloaded file missing: {dest}'
+            assert (
+                hashlib.sha256(dest.read_bytes()).digest()
+                == hashlib.sha256(payload).digest()
+            ), 'Transferred bytes did not match the seed payload'
             if direction == 'anacrolix-to-deluge':
-                assert deluge_handle().status().is_seeding, 'Deluge torrent not complete'
+                assert deluge_handle().status().is_seeding, (
+                    'Deluge torrent not complete'
+                )
             else:
-                assert process.poll() == 0, f'Anacrolix download not complete: {go_log()}'
+                assert process.poll() == 0, (
+                    f'Anacrolix download not complete: {go_log()}'
+                )
             print(
                 f'PASS {direction}: {len(payload)} bytes; '
                 f'{tracker.offers_relayed} WSS offers / {tracker.answers_relayed} answers',
