@@ -897,6 +897,14 @@ class Torrent:
             if peer.flags & peer.connecting or peer.flags & peer.handshake:
                 continue
 
+            # peer_info.ip is not exposed by newer libtorrent Python ABIs.
+            # remote_endpoint() is supported by current bindings.
+            endpoint = (
+                peer.remote_endpoint()
+                if hasattr(peer, 'remote_endpoint')
+                else peer.ip
+            )
+
             try:
                 client = decode_bytes(peer.client)
             except UnicodeDecodeError:
@@ -905,7 +913,7 @@ class Torrent:
 
             try:
                 country = component.get('Core').geoip_instance.country_code_by_addr(
-                    peer.ip[0]
+                    endpoint[0]
                 )
             except AttributeError:
                 country = ''
@@ -922,7 +930,7 @@ class Torrent:
                     'client': client,
                     'country': country,
                     'down_speed': peer.payload_down_speed,
-                    'ip': f'{peer.ip[0]}:{peer.ip[1]}',
+                    'ip': f'{endpoint[0]}:{endpoint[1]}',
                     'progress': peer.progress,
                     'seed': peer.flags & peer.seed,
                     'up_speed': peer.payload_up_speed,
