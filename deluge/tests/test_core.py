@@ -12,7 +12,6 @@ from unittest import mock
 import pytest
 import pytest_twisted
 from twisted.internet import defer, reactor, task
-from twisted.internet.error import CannotListenError
 from twisted.web.http import FORBIDDEN
 from twisted.web.resource import EncodingResourceWrapper, Resource
 from twisted.web.server import GzipEncoderFactory, Site
@@ -85,22 +84,13 @@ class TestCore(BaseTestCase):
         self.core.config.config['lsd'] = False
         self.clock = task.Clock()
         self.core.torrentmanager.clock = self.clock
-        self.listen_port = 51242
         return component.start().addCallback(self.start_web_server)
 
     def start_web_server(self, result):
         website = Site(TopLevelResource())
-        for dummy in range(10):
-            try:
-                self.webserver = reactor.listenTCP(self.listen_port, website)
-            except CannotListenError as ex:
-                error = ex
-                self.listen_port += 1
-            else:
-                break
-        else:
-            raise error
-
+        # Windows CI runners may reserve entire fixed port ranges.
+        self.webserver = reactor.listenTCP(0, website, interface='127.0.0.1')
+        self.listen_port = self.webserver.getHost().port
         return result
 
     def tear_down(self):
