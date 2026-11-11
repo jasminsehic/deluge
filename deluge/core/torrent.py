@@ -17,6 +17,7 @@ import logging
 import os
 import socket
 import time
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -46,6 +47,23 @@ LT_TORRENT_STATE_MAP = {
     'allocating': 'Allocating',
     'checking_resume_data': 'Checking',
 }
+
+
+def _torrent_duration(status, legacy_name, modern_name):
+    """Return elapsed torrent time in seconds for libtorrent 1.2 through 2.1."""
+    if hasattr(status, legacy_name):
+        return getattr(status, legacy_name)
+    return int(getattr(status, modern_name).total_seconds())
+
+
+def _time_since_torrent_activity(status, legacy_name, modern_name):
+    """Return seconds since transfer, or -1 if no transfer has occurred."""
+    if hasattr(status, legacy_name):
+        return getattr(status, legacy_name)
+    timestamp = getattr(status, modern_name)
+    if timestamp is None:
+        return -1
+    return max(0, int((datetime.now() - timestamp).total_seconds()))
 
 
 def sanitize_filepath(filepath, folder=False):
@@ -1055,7 +1073,14 @@ class Torrent:
 
     def get_time_since_transfer(self):
         """The time since either upload/download from peers"""
-        time_since = (self.status.time_since_download, self.status.time_since_upload)
+        time_since = (
+            _time_since_torrent_activity(
+                self.status, 'time_since_download', 'last_download'
+            ),
+            _time_since_torrent_activity(
+                self.status, 'time_since_upload', 'last_upload'
+            ),
+        )
         try:
             return min(x for x in time_since if x != -1)
         except ValueError:
@@ -1140,9 +1165,15 @@ class Torrent:
     def _create_status_funcs(self):
         """Creates the functions for getting torrent status"""
         self.status_funcs = {
-            'active_time': lambda: self.status.active_time,
-            'seeding_time': lambda: self.status.seeding_time,
-            'finished_time': lambda: self.status.finished_time,
+            'active_time': lambda: _torrent_duration(
+                self.status, 'active_time', 'active_duration'
+            ),
+            'seeding_time': lambda: _torrent_duration(
+                self.status, 'seeding_time', 'seeding_duration'
+            ),
+            'finished_time': lambda: _torrent_duration(
+                self.status, 'finished_time', 'finished_duration'
+            ),
             'all_time_download': lambda: self.status.all_time_download,
             'storage_mode': lambda: self.status.storage_mode.name.split('_')[
                 2
@@ -1216,10 +1247,14 @@ class Torrent:
             'tracker_status': lambda: self.tracker_status,
             'upload_payload_rate': lambda: self.status.upload_payload_rate,
             'comment': lambda: (
-                decode_bytes(self.torrent_info.comment()) if self.has_metadata else ''
+                decode_bytes(self.torrent_info.comment())
+                if self.has_metadata and hasattr(self.torrent_info, 'comment')
+                else ''
             ),
             'creator': lambda: (
-                decode_bytes(self.torrent_info.creator()) if self.has_metadata else ''
+                decode_bytes(self.torrent_info.creator())
+                if self.has_metadata and hasattr(self.torrent_info, 'creator')
+                else ''
             ),
             'num_files': lambda: (
                 self.torrent_info.num_files() if self.has_metadata else 0
@@ -1246,10 +1281,18 @@ class Torrent:
             'last_seen_complete': lambda: self.status.last_seen_complete,
             'name': self.get_name,
             'pieces': self._get_pieces_info,
-            'seed_mode': lambda: self.status.seed_mode,
-            'super_seeding': lambda: self.status.super_seeding,
-            'time_since_download': lambda: self.status.time_since_download,
-            'time_since_upload': lambda: self.status.time_since_upload,
+            'seed_mode': lambda: _torrent_status_flag(
+                self.status, lt.torrent_flags.seed_mode, 'seed_mode'
+            ),
+            'super_seeding': lambda: _torrent_status_flag(
+                self.status, lt.torrent_flags.super_seeding, 'super_seeding'
+            ),
+            'time_since_download': lambda: _time_since_torrent_activity(
+                self.status, 'time_since_download', 'last_download'
+            ),
+            'time_since_upload': lambda: _time_since_torrent_activity(
+                self.status, 'time_since_upload', 'last_upload'
+            ),
             'time_since_transfer': self.get_time_since_transfer,
         }
 
