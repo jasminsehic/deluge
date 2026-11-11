@@ -230,7 +230,7 @@ jobs:
       - name: Verify torrent creation and peer-info API on native ABI
         shell: pwsh
         run: |
-          python -m pytest -v deluge/tests/test_metafile.py deluge/tests/test_torrent.py::TestTorrent::test_native_peer_info_binding_contract
+          python -m pytest -v deluge/tests/test_metafile.py deluge/tests/test_libtorrent_binding_contract.py deluge/tests/test_torrent.py::TestTorrent::test_native_peer_info_binding_contract
           if ($LASTEXITCODE -ne 0) { throw 'Native libtorrent metadata/peer ABI regressions failed' }
 
       - name: Install GTK runtime and Python GTK bindings
