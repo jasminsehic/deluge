@@ -98,6 +98,7 @@ jobs:
           cmake -S libtorrent-src -B libtorrent-build -G 'Visual Studio 17 2022' -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_STANDARD=17 `
+            "-DCMAKE_CXX_FLAGS=/DBOOST_PYTHON_STATIC_LIB" `
             -DBUILD_SHARED_LIBS=OFF `
             -Dstatic_runtime=OFF `
             -Dwebtorrent=ON `
