@@ -90,3 +90,42 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
         run: $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py deluge/tests/test_session_settings_compat.py
+
+      - name: Checkout independent Anacrolix/Pion torrent client
+        uses: actions/checkout@v4
+        with:
+          repository: jasminsehic/torrent
+          ref: 40144f54349deb3b3a67e74764f1d36eeefc899d
+          path: anacrolix-src
+          persist-credentials: false
+
+      - name: Set up Go for Anacrolix peer
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: anacrolix-src/go.mod
+          cache-dependency-path: anacrolix-src/go.sum
+
+      - name: Build independent Anacrolix/Pion test peer
+        run: |
+          cd anacrolix-src
+          GOWORK=off go build -o "$GITHUB_WORKSPACE/anacrolix-interop-peer" \\
+            "$GITHUB_WORKSPACE/deluge/deluge/tests/interoperability/anacrolix-peer.go"
+
+      - name: Verify bidirectional Deluge / Anacrolix WebRTC interoperability
+        timeout-minutes: 8
+        working-directory: deluge
+        env:
+          PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
+          ANACROLIX_INTEROP_PEER: ${{ github.workspace }}/anacrolix-interop-peer
+          ANACROLIX_INTEROP_LOG_DIR: ${{ runner.temp }}/deluge-anacrolix-interop
+        run: |
+          test -x "$ANACROLIX_INTEROP_PEER"
+          $GITHUB_WORKSPACE/.venv/bin/python -m pytest -vv -s -m webtorrent deluge/tests/test_anacrolix_interop.py
+
+      - name: Upload interoperability diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deluge-anacrolix-interop-logs
+          path: ${{ runner.temp }}/deluge-anacrolix-interop/**
+          if-no-files-found: ignore
