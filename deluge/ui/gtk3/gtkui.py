@@ -25,10 +25,6 @@ from twisted.internet import defer, gtk3reactor
 from twisted.internet.error import ReactorAlreadyInstalledError
 from twisted.internet.task import LoopingCall
 
-from .windows_reactor import configure_windows_glib_waker  # isort:skip
-
-configure_windows_glib_waker()
-
 try:
     # Install twisted reactor, before any other modules import reactor.
     reactor = gtk3reactor.install()
