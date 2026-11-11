@@ -409,6 +409,11 @@ class TestWebTorrent(BaseTestCase):
                 )
                 assert torrent_id
                 download_handle = self.core.torrentmanager.torrents[torrent_id].handle
+                assert any(
+                    entry['url'] == tracker_url for entry in download_handle.trackers()
+                ), 'Deluge did not retain the WSS tracker from the torrent file'
+                download_handle.resume()
+                download_handle.force_reannounce()
 
                 deadline = reactor.seconds() + 60
                 while reactor.seconds() < deadline:
@@ -421,7 +426,11 @@ class TestWebTorrent(BaseTestCase):
                     'No offer crossed the WSS tracker '
                     f'(announces={tracker.announces}, '
                     f'answers={tracker.answers_relayed}, '
-                    f'seeder={seed_handle.status().is_seeding})'
+                    f'seeder={seed_handle.status().is_seeding}, '
+                    f'download_status={download_handle.status().state}, '
+                    f'download_paused={download_handle.status().paused}, '
+                    f'download_error={download_handle.status().errc.message()}, '
+                    f'trackers={download_handle.trackers()})'
                 )
                 assert tracker.answers_relayed > 0, 'No answer crossed the WSS tracker'
                 assert download_handle.status().is_seeding, (
