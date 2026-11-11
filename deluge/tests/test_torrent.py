@@ -83,6 +83,46 @@ class TestTorrent(BaseTestCase):
         assert isinstance(status['creator'], str)
         assert isinstance(status['comment'], str)
 
+    def test_peer_endpoints_with_current_and_legacy_bindings(self):
+        """The Peers tab must work without the removed peer_info.ip field."""
+        fields = {
+            'client': b'test peer',
+            'flags': 0,
+            'connecting': 1,
+            'handshake': 2,
+            'seed': 4,
+            'payload_down_speed': 1024,
+            'payload_up_speed': 512,
+            'progress': 0.5,
+        }
+        modern = SimpleNamespace(
+            **fields, remote_endpoint=lambda: ('2001:db8::1', 51413)
+        )
+        legacy = SimpleNamespace(**fields, ip=('192.0.2.5', 6881))
+        connecting = SimpleNamespace(
+            **{**fields, 'flags': 1},
+            remote_endpoint=lambda: ('192.0.2.6', 6882),
+        )
+        torrent = SimpleNamespace(
+            handle=SimpleNamespace(
+                get_peer_info=lambda: [modern, legacy, connecting]
+            )
+        )
+
+        with mock.patch.object(deluge.core.torrent.component, 'get') as get:
+            get.return_value.geoip_instance.country_code_by_addr.return_value = 'AU'
+            peers = Torrent.get_peers(torrent)
+
+        assert [peer['ip'] for peer in peers] == [
+            '2001:db8::1:51413',
+            '192.0.2.5:6881',
+        ]
+        assert peers[0]['client'] == 'test peer'
+        assert peers[0]['country'] == 'AU'
+        assert peers[0]['down_speed'] == 1024
+        assert peers[0]['up_speed'] == 512
+        assert peers[0]['progress'] == 0.5
+
     def test_file_progress_uses_indexed_storage(self):
         """ABI 2/3 file_storage does not expose __iter__ in Python."""
         storage = SimpleNamespace(
