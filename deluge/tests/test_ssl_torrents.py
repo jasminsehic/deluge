@@ -11,6 +11,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
+from twisted.internet import reactor, task
 
 from deluge.common import create_localclient_account
 from deluge.config import Config
@@ -196,10 +197,10 @@ class TestSslTorrents(BaseTestCase):
         for torrent_id in torrent_ids.values():
             await leecher.core.connect_peer(torrent_id, '127.0.0.1', seeder_port)
 
-        # Wait for transfers to be executed
-        max_wait_seconds = 10
+        # Poll without blocking Twisted's reactor while SSL peers negotiate.
+        deadline = time.monotonic() + 30
         all_finished = False
-        while max_wait_seconds > 0:
+        while time.monotonic() < deadline:
             status_dict = await leecher.core.get_torrents_status(
                 {'id': list(torrent_ids.values())}, ['is_finished']
             )
@@ -207,10 +208,9 @@ class TestSslTorrents(BaseTestCase):
             if all_finished:
                 break
 
-            time.sleep(1)
-            max_wait_seconds -= 1
+            await task.deferLater(reactor, 1, lambda: None)
 
-        assert all_finished
+        assert all_finished, f'SSL torrents did not complete: {status_dict!r}'
 
         # Ensure that certificates are removed on torrent removal
         certificate_location = leecher_config_dir / 'ssl_torrents_certs'
