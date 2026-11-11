@@ -108,7 +108,7 @@ jobs:
       - name: Build independent Anacrolix/Pion test peer
         run: |
           cd anacrolix-src
-          GOWORK=off go build -o "$GITHUB_WORKSPACE/anacrolix-interop-peer" \\
+          GOWORK=off go build -o "$GITHUB_WORKSPACE/anacrolix-interop-peer" \
             "$GITHUB_WORKSPACE/deluge/deluge/tests/interoperability/anacrolix-peer.go"
 
       - name: Verify bidirectional Deluge / Anacrolix WebRTC interoperability
