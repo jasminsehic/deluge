@@ -123,6 +123,7 @@ class RelayWssTracker(LoopbackWssTracker):
         self.offers_relayed = 0
         self.answers_relayed = 0
         self.announces = []
+        self.announce_peers = []
 
     def run(self, context):
         from websockets.legacy.server import serve
@@ -161,6 +162,9 @@ class RelayWssTracker(LoopbackWssTracker):
                     self.announces.append(
                         (len(request.get('offers', [])), request.get('left'))
                     )
+                    # Diagnostics: distinguish same-peer-id collision from
+                    # tracker routing or ICE negotiation failures.
+                    self.announce_peers.append((repr(info_hash), repr(peer_id)))
                     key = (info_hash, peer_id)
                     peers[key] = websocket
                     owned.add(key)
@@ -503,6 +507,7 @@ class TestWebTorrent(BaseTestCase):
                 assert tracker.offers_relayed > 0, (
                     'No offer crossed the WSS tracker '
                     f'(announces={tracker.announces}, '
+                    f'announce_peers={tracker.announce_peers}, '
                     f'answers={tracker.answers_relayed}, '
                     f'seeder={seed_handle.status().is_seeding}, '
                     f'download_status={download_handle.status().state}, '
