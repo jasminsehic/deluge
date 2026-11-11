@@ -458,6 +458,15 @@ class TestTorrent(BaseTestCase):
         assert result == 100
         assert isinstance(result, int)
 
+    def test_get_name_with_empty_file_view(self):
+        """A delayed metadata file listing must not break status or removal."""
+        torrent = mock.MagicMock()
+        torrent.options = {'name': ''}
+        torrent.has_metadata = True
+        torrent.get_files.return_value = []
+        torrent.torrent_id = 'abc123'
+        assert Torrent.get_name(torrent) == 'abc123'
+
     def test_get_name_unicode(self):
         """Test retrieving a unicode torrent name from libtorrent."""
         atp = self.get_torrent_atp('unicode_file.torrent')
