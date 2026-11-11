@@ -52,17 +52,23 @@ def todo_test(caller):
 
 
 def add_watchdog(deferred, timeout=0.05, message=None):
-    def callback(value):
-        if not watchdog.called and not watchdog.cancelled:
-            watchdog.cancel()
-        if not deferred.called:
-            if message:
-                print(message)
-            deferred.cancel()
-        return value
+    """Fail the startup Deferred if its expected output never arrives."""
 
-    deferred.addBoth(callback)
-    watchdog = reactor.callLater(timeout, defer.Deferred.addTimeout, deferred)
+    def on_timeout():
+        if deferred.called:
+            return
+        if message:
+            print(message)
+        deferred.errback(TimeoutError(message or 'Test subprocess startup timed out'))
+
+    watchdog = reactor.callLater(timeout, on_timeout)
+
+    def cancel_watchdog(result):
+        if watchdog.active():
+            watchdog.cancel()
+        return result
+
+    deferred.addBoth(cancel_watchdog)
     return watchdog
 
 
@@ -164,6 +170,17 @@ class ProcessOutputHandler(protocol.ProcessProtocol):
     def processEnded(self, reason):  # NOQA: N802
         self.transport.loseConnection()
         if self.quit_d is None:
+            # Startup failed before the expected log line. Do not leave its
+            # Deferred unresolved until the whole CI job is terminated.
+            for callback in self.callbacks:
+                if not callback['deferred'].called:
+                    callback['deferred'].errback(
+                        DelugeError(
+                            'Test subprocess ended before startup completed '
+                            f'(exit code {reason.value.exitCode}):\n'
+                            f'{self.log_output[-4000:]}'
+                        )
+                    )
             return
         if reason.value.exitCode == 0:
             self.quit_d.callback(True)
@@ -270,7 +287,7 @@ except Exception:
     }
 
     callbacks = []
-    default_core_cb = {'deferred': Deferred(), 'types': 'stdout'}
+    default_core_cb = {'deferred': Deferred(), 'types': ('stdout', 'stderr')}
     if timeout:
         default_core_cb['timeout'] = timeout
         default_core_cb['timeout_msg'] = timeout_msg if timeout_msg else 'Timeout!'
