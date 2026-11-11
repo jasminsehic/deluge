@@ -900,9 +900,7 @@ class Torrent:
             # peer_info.ip is not exposed by newer libtorrent Python ABIs.
             # remote_endpoint() is supported by current bindings.
             endpoint = (
-                peer.remote_endpoint()
-                if hasattr(peer, 'remote_endpoint')
-                else peer.ip
+                peer.remote_endpoint() if hasattr(peer, 'remote_endpoint') else peer.ip
             )
 
             try:
@@ -1044,9 +1042,7 @@ class Torrent:
             # temporarily unavailable while restoring a session.
             files = self.get_files()
             name = (
-                files[0]['path'].replace('\\', '/', 1).split('/', 1)[0]
-                if files
-                else ''
+                files[0]['path'].replace('\\', '/', 1).split('/', 1)[0] if files else ''
             )
         else:
             name = decode_bytes(self.handle.status().name)
