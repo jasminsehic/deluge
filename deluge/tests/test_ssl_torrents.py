@@ -4,6 +4,7 @@
 # See LICENSE for more details.
 #
 import datetime
+import pytest
 import time
 
 from cryptography import x509
@@ -210,7 +211,18 @@ class TestSslTorrents(BaseTestCase):
 
             await task.deferLater(reactor, 1, lambda: None)
 
-        assert all_finished, f'SSL torrents did not complete: {status_dict!r}'
+        if not all_finished:
+            fields = ['is_finished', 'state', 'progress', 'num_peers', 'num_seeds', 'message']
+            leecher_status = await leecher.core.get_torrents_status(
+                {'id': list(torrent_ids.values())}, fields
+            )
+            seeder_status = await seeder.core.get_torrents_status(
+                {'id': list(torrent_ids.values())}, fields
+            )
+            pytest.fail(
+                f'SSL torrents did not complete: leecher={leecher_status!r}, '
+                f'seeder={seeder_status!r}'
+            )
 
         # Ensure that certificates are removed on torrent removal
         certificate_location = leecher_config_dir / 'ssl_torrents_certs'
