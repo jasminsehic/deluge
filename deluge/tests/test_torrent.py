@@ -36,6 +36,36 @@ except ImportError:
 
 
 class TestTorrent(BaseTestCase):
+    def test_file_progress_uses_indexed_storage(self):
+        """ABI 2/3 file_storage does not expose __iter__ in Python."""
+        storage = SimpleNamespace(
+            num_files=lambda: 3,
+            file_size=lambda index: [0, 16, 32][index],
+        )
+        torrent = SimpleNamespace(
+            has_metadata=True,
+            torrent_info=SimpleNamespace(layout=lambda: storage),
+            handle=SimpleNamespace(file_progress=lambda: [0, 4, 16]),
+        )
+        assert Torrent.get_file_progress(torrent) == [0.0, 0.25, 0.5]
+
+    def test_file_progress_handles_native_progress_failure(self):
+        """A libtorrent file_progress error must not break the Files tab."""
+        storage = SimpleNamespace(
+            num_files=lambda: 2,
+            file_size=lambda index: [16, 32][index],
+        )
+
+        def fail_progress():
+            raise RuntimeError('file_progress unavailable')
+
+        torrent = SimpleNamespace(
+            has_metadata=True,
+            torrent_info=SimpleNamespace(layout=lambda: storage),
+            handle=SimpleNamespace(file_progress=fail_progress),
+        )
+        assert Torrent.get_file_progress(torrent) == [0.0, 0.0]
+
     def test_torrent_status_flags(self):
         status = SimpleNamespace(
             flags=lt.torrent_flags.paused | lt.torrent_flags.auto_managed
