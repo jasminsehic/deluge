@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -214,7 +213,14 @@ class TestSslTorrents(BaseTestCase):
             await task.deferLater(reactor, 0.25, lambda: None)
 
         if not all_finished:
-            fields = ['is_finished', 'state', 'progress', 'num_peers', 'num_seeds', 'message']
+            fields = [
+                'is_finished',
+                'state',
+                'progress',
+                'num_peers',
+                'num_seeds',
+                'message',
+            ]
             leecher_status = await leecher.core.get_torrents_status(
                 {'id': [torrent_id]}, fields
             )
