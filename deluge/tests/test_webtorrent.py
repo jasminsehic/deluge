@@ -382,9 +382,13 @@ class TestWebTorrent(BaseTestCase):
                 seed_handle = seeder.add_torrent(seed_params)
 
                 deadline = reactor.seconds() + 15
-                while not seed_handle.status().is_seeding and reactor.seconds() < deadline:
+                while (
+                    not seed_handle.status().is_seeding and reactor.seconds() < deadline
+                ):
                     yield task.deferLater(reactor, 0.2, lambda: None)
-                assert seed_handle.status().is_seeding, 'RTC seeder did not hash its file'
+                assert seed_handle.status().is_seeding, (
+                    'RTC seeder did not hash its file'
+                )
 
                 torrent_id = yield self.core.add_torrent_file_async(
                     'rtc-payload.torrent',

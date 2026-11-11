@@ -6,8 +6,8 @@
 import base64
 import os
 from base64 import b64encode
-from unittest import mock
 from hashlib import sha1 as sha
+from unittest import mock
 
 import pytest
 import pytest_twisted

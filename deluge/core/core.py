@@ -15,7 +15,7 @@ import tempfile
 from base64 import b64decode, b64encode
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
-from urllib.request import URLError, urlopen
+from urllib.request import urlopen
 
 from twisted.internet import defer, reactor, task, threads
 from twisted.web.client import Agent, readBody
