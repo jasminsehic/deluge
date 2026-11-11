@@ -83,6 +83,19 @@ class TestTorrent(BaseTestCase):
         assert isinstance(status['creator'], str)
         assert isinstance(status['comment'], str)
 
+    def test_native_peer_info_binding_contract(self):
+        """Exercise the real peer_info Python type, not only mock peers."""
+        peer = lt.peer_info()
+        if getattr(lt, 'api_version', 1) >= 4:
+            assert not hasattr(peer, 'ip')
+            endpoint = peer.remote_endpoint()
+        else:
+            endpoint = peer.ip
+        assert isinstance(endpoint, tuple)
+        assert len(endpoint) == 2
+        assert isinstance(endpoint[0], str)
+        assert isinstance(endpoint[1], int)
+
     def test_peer_endpoints_with_current_and_legacy_bindings(self):
         """The Peers tab must work without the removed peer_info.ip field."""
         fields = {
