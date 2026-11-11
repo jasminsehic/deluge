@@ -276,3 +276,6 @@ class TestAnacrolixInterop(BaseTestCase):
             if torrent_id is not None:
                 self.core.remove_torrent(torrent_id, remove_data=False)
             tracker.stop()
+            # Give native RTC callbacks time to finish after removing the
+            # torrent, before libtorrent session teardown and interpreter exit.
+            yield task.deferLater(reactor, 1.0, lambda: None)
