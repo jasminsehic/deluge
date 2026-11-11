@@ -111,13 +111,13 @@ iTniEzsEklfNUEZ59lwiDmJF1qmmH017PwIBAg==
 CA_CERT, CA_KEY = x509_ca()
 
 
-async def _create_daemon_and_client(daemon_factory, config_dir, default_cert_name='*'):
+async def _create_daemon_and_client(daemon_factory, config_dir):
     certificate_location = config_dir / 'ssl_torrents_certs'
     certificate_location.mkdir()
 
     # Write default SSL certificates
     crt_pem, key_pem = x509_peer_certificate_pem(
-        torrent_name=default_cert_name,
+        torrent_name='*',
         ca_cert=CA_CERT,
         ca_key=CA_KEY,
     )
@@ -157,17 +157,12 @@ class TestSslTorrents(BaseTestCase):
         # Test the explicit and default certificates independently.  libtorrent
         # 1.2 can treat two simultaneous SSL torrent connections to the same
         # peer endpoint as duplicates, leaving one unconnected.
-        default_cert_name = '*' if explicit_certificate else torrent_name
         seeder = await _create_daemon_and_client(
-            daemon_factory=daemon_factory,
-            config_dir=tmp_path_factory.mktemp('seeder'),
-            default_cert_name=default_cert_name,
+            daemon_factory=daemon_factory, config_dir=tmp_path_factory.mktemp('seeder')
         )
         leecher_config_dir = tmp_path_factory.mktemp('leecher')
         leecher = await _create_daemon_and_client(
-            daemon_factory=daemon_factory,
-            config_dir=leecher_config_dir,
-            default_cert_name=default_cert_name,
+            daemon_factory=daemon_factory, config_dir=leecher_config_dir
         )
         destination_dir = tmp_path_factory.mktemp('destination')
 
@@ -201,12 +196,16 @@ class TestSslTorrents(BaseTestCase):
         if seeder_port < 0:
             seeder_conf = await seeder.core.get_config()
             seeder_port = seeder_conf['listen_random_port'] + 1
-        await leecher.core.connect_peer(torrent_id, '127.0.0.1', seeder_port)
-
-        # Yield to Twisted while the SSL connection and piece transfer progress.
+        # Allow the asynchronous certificate-alert handler to supply the
+        # default wildcard cert. Retry the direct dial if an early attempt is
+        # rejected while the SSL torrent is still initializing.
         deadline = time.monotonic() + 30
+        next_dial = 0
         all_finished = False
         while time.monotonic() < deadline:
+            if time.monotonic() >= next_dial:
+                await leecher.core.connect_peer(torrent_id, '127.0.0.1', seeder_port)
+                next_dial = time.monotonic() + 3
             status_dict = await leecher.core.get_torrents_status(
                 {'id': [torrent_id]}, ['is_finished']
             )
