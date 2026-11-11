@@ -509,11 +509,12 @@ class TorrentManager(component.Component):
             if magnet and getattr(lt, 'api_version', 1) >= 3:
                 params.info_hashes = lt.parse_magnet_uri(magnet).info_hashes
         elif getattr(lt, 'api_version', 1) >= 3:
-            params = (
-                lt.parse_magnet_uri(magnet)
-                if magnet
-                else file_params if file_params is not None else lt.add_torrent_params()
-            )
+            if magnet:
+                params = lt.parse_magnet_uri(magnet)
+            elif file_params is not None:
+                params = file_params
+            else:
+                params = lt.add_torrent_params()
         else:
             params = None
 
