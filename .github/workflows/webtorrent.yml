@@ -89,7 +89,7 @@ jobs:
         working-directory: deluge
         env:
           PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
-        run: $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py deluge/tests/test_session_settings_compat.py deluge/tests/test_metafile.py
+        run: $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py deluge/tests/test_session_settings_compat.py deluge/tests/test_metafile.py deluge/tests/test_libtorrent_binding_contract.py
 
       - name: Checkout independent Anacrolix/Pion torrent client
         uses: actions/checkout@v4
