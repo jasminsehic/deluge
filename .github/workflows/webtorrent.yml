@@ -1,6 +1,9 @@
 name: WebTorrent / libtorrent 2.1
 
 on:
+  push:
+    branches:
+      - feature/webtorrent-anacrolix-interop
   pull_request:
   workflow_dispatch:
 
