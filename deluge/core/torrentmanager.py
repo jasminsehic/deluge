@@ -442,7 +442,7 @@ class TorrentManager(component.Component):
         return options
 
     def _build_torrent_params(
-        self, torrent_info=None, magnet=None, options=None, resume_data=None
+        self, torrent_info=None, magnet=None, options=None, resume_data=None, file_params=None
     ):
         """Create the add_torrent_params for adding a torrent to libtorrent."""
         add_torrent_params = {}
@@ -509,11 +509,23 @@ class TorrentManager(component.Component):
             if magnet and getattr(lt, 'api_version', 1) >= 3:
                 params.info_hashes = lt.parse_magnet_uri(magnet).info_hashes
         elif getattr(lt, 'api_version', 1) >= 3:
-            params = lt.parse_magnet_uri(magnet) if magnet else lt.add_torrent_params()
+            params = (
+                lt.parse_magnet_uri(magnet)
+                if magnet
+                else file_params if file_params is not None else lt.add_torrent_params()
+            )
         else:
             params = None
 
         if params is not None:
+            if file_params is not None and params is not file_params:
+                # A resume file may not carry the original torrent's discovery
+                # endpoints. Preserve its explicit tracker edits when present.
+                if not params.trackers:
+                    params.trackers = file_params.trackers
+                    params.tracker_tiers = file_params.tracker_tiers
+                if not params.url_seeds:
+                    params.url_seeds = file_params.url_seeds
             for key, value in add_torrent_params.items():
                 if key == 'save_path':
                     value = options['download_location']
@@ -557,9 +569,16 @@ class TorrentManager(component.Component):
                 'You must specify a valid torrent_info, torrent state or magnet.'
             )
 
+        file_params = None
         if filedump:
             try:
-                torrent_info = _torrent_info_from_bytes(filedump)
+                if getattr(lt, 'api_version', 1) >= 3:
+                    # Keep trackers and web seeds, which are not part of the
+                    # torrent_info carried by the modern Python binding.
+                    file_params = lt.load_torrent_buffer(filedump)
+                    torrent_info = file_params.ti
+                else:
+                    torrent_info = _torrent_info_from_bytes(filedump)
             except RuntimeError as ex:
                 raise AddTorrentError(
                     'Unable to add torrent, decoding filedump failed: %s' % ex
@@ -567,7 +586,7 @@ class TorrentManager(component.Component):
 
         options = self._build_torrent_options(options)
         __, add_torrent_params = self._build_torrent_params(
-            torrent_info, magnet, options, resume_data
+            torrent_info, magnet, options, resume_data, file_params
         )
 
         # We need to pause the AlertManager momentarily to prevent alerts
@@ -622,9 +641,16 @@ class TorrentManager(component.Component):
                 'You must specify a valid torrent_info, torrent state or magnet.'
             )
 
+        file_params = None
         if filedump:
             try:
-                torrent_info = _torrent_info_from_bytes(filedump)
+                if getattr(lt, 'api_version', 1) >= 3:
+                    # Keep trackers and web seeds, which are not part of the
+                    # torrent_info carried by the modern Python binding.
+                    file_params = lt.load_torrent_buffer(filedump)
+                    torrent_info = file_params.ti
+                else:
+                    torrent_info = _torrent_info_from_bytes(filedump)
             except RuntimeError as ex:
                 raise AddTorrentError(
                     'Unable to add torrent, decoding filedump failed: %s' % ex
@@ -632,7 +658,7 @@ class TorrentManager(component.Component):
 
         options = self._build_torrent_options(options)
         torrent_id, add_torrent_params = self._build_torrent_params(
-            torrent_info, magnet, options, resume_data
+            torrent_info, magnet, options, resume_data, file_params
         )
 
         d = Deferred()
