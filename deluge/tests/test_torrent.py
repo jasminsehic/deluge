@@ -55,18 +55,14 @@ class TestTorrent(BaseTestCase):
         )
         assert 9 <= elapsed <= 12
         assert (
-            _time_since_torrent_activity(
-                modern, 'time_since_upload', 'last_upload'
-            )
+            _time_since_torrent_activity(modern, 'time_since_upload', 'last_upload')
             == -1
         )
 
         legacy = SimpleNamespace(active_time=17, time_since_download=8)
         assert _torrent_duration(legacy, 'active_time', 'active_duration') == 17
         assert (
-            _time_since_torrent_activity(
-                legacy, 'time_since_download', 'last_download'
-            )
+            _time_since_torrent_activity(legacy, 'time_since_download', 'last_download')
             == 8
         )
 
