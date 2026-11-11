@@ -442,7 +442,12 @@ class TorrentManager(component.Component):
         return options
 
     def _build_torrent_params(
-        self, torrent_info=None, magnet=None, options=None, resume_data=None, file_params=None
+        self,
+        torrent_info=None,
+        magnet=None,
+        options=None,
+        resume_data=None,
+        file_params=None,
     ):
         """Create the add_torrent_params for adding a torrent to libtorrent."""
         add_torrent_params = {}
