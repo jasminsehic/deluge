@@ -104,9 +104,7 @@ class TestTorrent(BaseTestCase):
             remote_endpoint=lambda: ('192.0.2.6', 6882),
         )
         torrent = SimpleNamespace(
-            handle=SimpleNamespace(
-                get_peer_info=lambda: [modern, legacy, connecting]
-            )
+            handle=SimpleNamespace(get_peer_info=lambda: [modern, legacy, connecting])
         )
 
         with mock.patch.object(deluge.core.torrent.component, 'get') as get:
