@@ -7,7 +7,6 @@ import ssl
 import subprocess
 import tempfile
 import threading
-from base64 import b64encode
 from pathlib import Path
 
 import pytest
@@ -394,15 +393,19 @@ class TestWebTorrent(BaseTestCase):
                     'RTC seeder did not hash its file'
                 )
 
-                torrent_id = yield self.core.add_torrent_file_async(
-                    'rtc-payload.torrent',
-                    b64encode(torrent_bytes),
+                # This exercises both RTC metadata exchange and piece
+                # transfer, with WSS as the only peer discovery mechanism.
+                magnet = (
+                    f'magnet:?xt=urn:btih:{seed_params.ti.info_hash()}'
+                    f'&tr=wss%3A%2F%2F127.0.0.1%3A{tracker.port}%2Fannounce'
+                )
+                torrent_id = yield self.core.add_torrent_magnet(
+                    magnet,
                     {
                         'download_location': str(download_dir),
                         'add_paused': False,
                         'auto_managed': False,
                     },
-                    save_state=False,
                 )
                 assert torrent_id
                 download_handle = self.core.torrentmanager.torrents[torrent_id].handle
