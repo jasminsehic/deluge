@@ -6,8 +6,8 @@
 import itertools
 import os
 import time
-from datetime import datetime, timedelta
 from base64 import b64encode
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest import mock
 
