@@ -6,6 +6,7 @@
 import itertools
 import os
 import time
+from datetime import datetime, timedelta
 from base64 import b64encode
 from types import SimpleNamespace
 from unittest import mock
@@ -22,7 +23,12 @@ from deluge.common import VersionSplit, utf8_encode_structure
 from deluge.conftest import BaseTestCase
 from deluge.core.core import Core
 from deluge.core.rpcserver import RPCServer
-from deluge.core.torrent import Torrent, _torrent_status_flag
+from deluge.core.torrent import (
+    Torrent,
+    _time_since_torrent_activity,
+    _torrent_duration,
+    _torrent_status_flag,
+)
 from deluge.core.torrentmanager import (
     TorrentManager,
     TorrentState,
@@ -36,6 +42,51 @@ except ImportError:
 
 
 class TestTorrent(BaseTestCase):
+    def test_libtorrent_status_legacy_and_modern_activity(self):
+        modern = SimpleNamespace(
+            active_duration=timedelta(seconds=42),
+            seeding_duration=timedelta(seconds=12),
+            last_download=datetime.now() - timedelta(seconds=10),
+            last_upload=None,
+        )
+        assert _torrent_duration(modern, 'active_time', 'active_duration') == 42
+        elapsed = _time_since_torrent_activity(
+            modern, 'time_since_download', 'last_download'
+        )
+        assert 9 <= elapsed <= 12
+        assert (
+            _time_since_torrent_activity(
+                modern, 'time_since_upload', 'last_upload'
+            )
+            == -1
+        )
+
+        legacy = SimpleNamespace(active_time=17, time_since_download=8)
+        assert _torrent_duration(legacy, 'active_time', 'active_duration') == 17
+        assert (
+            _time_since_torrent_activity(
+                legacy, 'time_since_download', 'last_download'
+            )
+            == 8
+        )
+
+    def test_full_torrent_status_with_native_binding(self):
+        """GTK Details and Status require every status key to be queryable."""
+        handle = self.session.add_torrent(self.get_torrent_atp('test.torrent'))
+        torrent = Torrent(handle, {})
+        status = torrent.get_status([], update=True, all_keys=True)
+        assert 'name' in status
+        assert isinstance(status['active_time'], int)
+        assert isinstance(status['seeding_time'], int)
+        assert isinstance(status['finished_time'], int)
+        assert isinstance(status['time_since_transfer'], int)
+        assert isinstance(status['time_since_download'], int)
+        assert isinstance(status['time_since_upload'], int)
+        assert isinstance(status['super_seeding'], bool)
+        assert isinstance(status['seed_mode'], bool)
+        assert isinstance(status['creator'], str)
+        assert isinstance(status['comment'], str)
+
     def test_file_progress_uses_indexed_storage(self):
         """ABI 2/3 file_storage does not expose __iter__ in Python."""
         storage = SimpleNamespace(
