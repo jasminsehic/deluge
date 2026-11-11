@@ -217,6 +217,15 @@ jobs:
           python -m pytest -vv -m webtorrent deluge/tests/test_webtorrent.py
           if ($LASTEXITCODE -ne 0) { throw 'Windows WebTorrent regression failed' }
 
+      - name: Verify GTK-facing libtorrent status and removal on native Windows build
+        shell: pwsh
+        run: |
+          python -m pytest -vv `
+            deluge/tests/test_torrent.py::TestTorrent::test_libtorrent_status_legacy_and_modern_activity `
+            deluge/tests/test_torrent.py::TestTorrent::test_full_torrent_status_with_native_binding `
+            deluge/tests/test_torrentmanager.py::TestTorrentmanager::test_full_core_status_and_state_update
+          if ($LASTEXITCODE -ne 0) { throw 'Native Windows GUI status/removal regressions failed' }
+
       - name: Install GTK runtime and Python GTK bindings
         shell: pwsh
         run: |
