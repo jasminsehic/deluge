@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 import pytest_twisted
-from twisted.internet import reactor, task
+from twisted.internet import defer, reactor, task
 
 from deluge import component
 from deluge.bencode import bencode
@@ -113,11 +113,11 @@ class TestTorrentmanager(BaseTestCase):
         failing.status_funcs = {'name': lambda: 'broken'}
         failing.get_status.side_effect = AttributeError('removed libtorrent field')
         self.tm.torrents[torrent_id] = failing
-        pending = self.tm.torrents_status_update([torrent_id], ['name'])
+        pending = defer.Deferred()
         errors = []
         pending.addErrback(lambda failure: errors.append(failure.value))
         self.tm.handle_torrents_status_callback(
-            self.tm.torrents_status_requests.pop()
+            (pending, [torrent_id], ['name'], False)
         )
         assert len(errors) == 1
         assert isinstance(errors[0], AttributeError)
