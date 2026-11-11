@@ -101,6 +101,39 @@ class TestTorrentmanager(BaseTestCase):
         assert isinstance(status['peers'], list)
         assert self.tm.remove(torrent_id, False)
 
+    def test_unsolicited_state_update_without_pending_request(self):
+        """An update outside an RPC status request must not crash the handler."""
+        self.tm.torrents_status_requests.clear()
+        self.tm.on_alert_state_update(SimpleNamespace(status=[]))
+
+    def test_status_request_failure_errbacks_instead_of_hanging(self):
+        """A broken native status field must resolve its pending Deferred."""
+        torrent_id = 'broken-torrent'
+        failing = mock.MagicMock()
+        failing.status_funcs = {'name': lambda: 'broken'}
+        failing.get_status.side_effect = AttributeError('removed libtorrent field')
+        self.tm.torrents[torrent_id] = failing
+        pending = self.tm.torrents_status_update([torrent_id], ['name'])
+        errors = []
+        pending.addErrback(lambda failure: errors.append(failure.value))
+        self.tm.handle_torrents_status_callback(
+            self.tm.torrents_status_requests.pop()
+        )
+        assert len(errors) == 1
+        assert isinstance(errors[0], AttributeError)
+        del self.tm.torrents[torrent_id]
+
+    async def test_remove_torrent_missing_queue_entry(self):
+        """Removal stays consistent if a torrent is absent from the queue."""
+        filename = common.get_test_data_file('test.torrent')
+        with open(filename, 'rb') as source:
+            torrent_id = await self.core.add_torrent_file_async(
+                filename, b64encode(source.read()), {}
+            )
+        self.tm.queued_torrents.discard(torrent_id)
+        assert self.tm.remove(torrent_id, False)
+        assert torrent_id not in self.tm.torrents
+
     @pytest_twisted.inlineCallbacks
     def test_remove_torrent(self):
         filename = common.get_test_data_file('test.torrent')
