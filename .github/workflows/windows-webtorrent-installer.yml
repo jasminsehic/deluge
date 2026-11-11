@@ -141,16 +141,34 @@ jobs:
           # dependency scanner; replace its native module with our compiled
           # RTC-enabled fork rather than distributing the published binary.
           $site = python -c "import sysconfig; print(sysconfig.get_path('platlib'))"
-          $existing = @(Get-ChildItem $site -Filter 'libtorrent*.pyd' -File)
-          if ($existing.Count -ne 1) {
-            throw "Expected one installed libtorrent extension, found $($existing.Count)"
-          }
-          $existing | Remove-Item -Force
+          $originalModule = python -c "import libtorrent as lt; print(lt.__file__)"
+          Write-Host "Published module location: $originalModule"
+          $metadata = @(Get-ChildItem $site -Directory -Filter 'libtorrent-*.dist-info')
+          if ($metadata.Count -ne 1) { throw "Expected exactly one libtorrent distribution metadata directory, found $($metadata.Count)" }
+          # Published Windows wheels can package the extension under a
+          # libtorrent/ directory instead of the site-packages root. The
+          # custom binding is a top-level extension. Replace the package
+          # files, but retain the dist-info metadata for PyInstaller.
+          $wheelPackage = Join-Path $site 'libtorrent'
+          if (Test-Path $wheelPackage) { Remove-Item $wheelPackage -Recurse -Force }
+          Get-ChildItem $site -File -Filter 'libtorrent*.pyd' | Remove-Item -Force
           $target = Join-Path $site (Split-Path $env:CUSTOM_LT_PYD -Leaf)
           Copy-Item $env:CUSTOM_LT_PYD $target -Force
           if ((Get-FileHash $target -Algorithm SHA256).Hash -ne (Get-FileHash $env:CUSTOM_LT_PYD -Algorithm SHA256).Hash) {
             throw 'Installed libtorrent extension differs from custom native build'
           }
+          @'
+          import hashlib
+          import importlib.metadata
+          from pathlib import Path
+          import libtorrent as lt
+          actual = hashlib.sha256(Path(lt.__file__).read_bytes()).hexdigest()
+          expected = hashlib.sha256(Path(__import__('os').environ['CUSTOM_LT_PYD']).read_bytes()).hexdigest()
+          assert actual == expected, (lt.__file__, actual, expected)
+          assert importlib.metadata.version('libtorrent') == '2.1.1'
+          print('Verified installed custom WebTorrent module:', lt.__file__)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Imported libtorrent is not the custom RTC extension' }
           python -m pip install --no-deps .
           if ($LASTEXITCODE -ne 0) { throw 'Deluge installation failed' }
           python setup.py install_scripts
