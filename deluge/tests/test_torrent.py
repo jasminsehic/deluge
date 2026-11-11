@@ -229,8 +229,8 @@ class TestTorrent(BaseTestCase):
         torrent_id = self.core.add_torrent_file(filename, filedump, options)
         torrent = self.core.torrentmanager.torrents[torrent_id]
 
-        # Inital check will fail and return to download state
-        self.assert_state_wait(torrent, 'Downloading')
+        # The initial seed-mode check runs asynchronously in libtorrent.
+        self.assert_state_wait(torrent, 'Downloading', timeout=10)
 
         # Force an error by reading (non-existant) piece from disk
         torrent.handle.read_piece(0)
