@@ -1,4 +1,4 @@
-name: Libtorrent legacy compatibility
+name: Libtorrent API version compatibility
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libtorrent: ["1.2.19", "2.0.11"]
+        libtorrent: ["1.2.19", "2.0.11", "2.1.1"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        libtorrent: ["1.2.19", "2.0.11"]
+        libtorrent: ["1.2.19", "2.0.11", "2.1.1"]
     steps:
       - uses: actions/checkout@v4
         with:
