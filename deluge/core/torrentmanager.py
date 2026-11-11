@@ -477,7 +477,7 @@ class TorrentManager(component.Component):
         # Check for existing torrent in session.
         if torrent_id in self.get_torrent_list():
             # Attempt merge trackers before returning.
-            self.torrents[torrent_id].merge_trackers(torrent_info)
+            self.torrents[torrent_id].merge_trackers(torrent_info, file_params)
             raise AddTorrentError('Torrent already in session (%s).' % torrent_id)
         elif torrent_id in self.torrents_loading:
             raise AddTorrentError('Torrent already being added (%s).' % torrent_id)
