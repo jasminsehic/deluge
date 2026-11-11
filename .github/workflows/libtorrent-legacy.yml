@@ -1,0 +1,99 @@
+name: Libtorrent legacy compatibility
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  UV_SYSTEM_PYTHON: 1
+
+jobs:
+  legacy-linux:
+    name: Linux / libtorrent ${{ matrix.libtorrent }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        libtorrent: ["1.2.19", "2.0.11"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set fork development package version
+        run: echo 2.2.0.dev0 > RELEASE-VERSION
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install dependencies with pinned libtorrent
+        run: |
+          echo 'libtorrent==${{ matrix.libtorrent }}' > libtorrent-constraints.txt
+          uv pip install -r requirements-ci.txt -c libtorrent-constraints.txt
+          uv pip install --no-deps -e .
+      - name: Confirm actual libtorrent version
+        env:
+          EXPECTED_LT: ${{ matrix.libtorrent }}
+        run: |
+          python -c 'import os; from deluge._libtorrent import lt; expected=os.environ["EXPECTED_LT"]; print("libtorrent:", lt.__version__, "API:", getattr(lt, "api_version", "unknown")); assert lt.__version__.startswith(expected), (expected, lt.__version__)'
+      - name: Run Deluge core and compatibility regressions
+        run: python -m pytest -v -m "not (todo or gtkui or internet)" --junitxml=legacy-linux-results.xml deluge
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-linux-lt${{ matrix.libtorrent }}
+          path: legacy-linux-results.xml
+          if-no-files-found: ignore
+
+  legacy-windows:
+    name: Windows / libtorrent ${{ matrix.libtorrent }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        libtorrent: ["1.2.19", "2.0.11"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set fork development package version
+        run: echo 2.2.0.dev0 > RELEASE-VERSION
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install dependencies with pinned libtorrent
+        shell: pwsh
+        run: |
+          "libtorrent==${{ matrix.libtorrent }}" | Out-File -Encoding ascii libtorrent-constraints.txt
+          uv pip install -r requirements-ci.txt -c libtorrent-constraints.txt
+          uv pip install --no-deps -e .
+      - name: Install OpenSSL
+        run: choco install openssl.light --version=1.1.1.20181020
+      - name: Patch Twisted
+        shell: bash
+        run: |
+          SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+          cd "$SITE_PACKAGES"
+          patch -p1 < "$GITHUB_WORKSPACE/.github/patches/twisted-glib-windows.patch"
+      - name: Confirm actual libtorrent version
+        shell: pwsh
+        env:
+          EXPECTED_LT: ${{ matrix.libtorrent }}
+        run: |
+          python -c 'import os; from deluge._libtorrent import lt; expected=os.environ["EXPECTED_LT"]; print("libtorrent:", lt.__version__, "API:", getattr(lt, "api_version", "unknown")); assert lt.__version__.startswith(expected), (expected, lt.__version__)'
+      - name: Run Deluge core and compatibility regressions
+        run: python -m pytest -v -m "not (todo or gtkui or internet or security)" --junitxml=legacy-windows-results.xml deluge
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-windows-lt${{ matrix.libtorrent }}
+          path: legacy-windows-results.xml
+          if-no-files-found: ignore
