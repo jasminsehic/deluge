@@ -789,7 +789,11 @@ class TorrentManager(component.Component):
         except KeyError:
             raise InvalidTorrentError('torrent_id %s not in session.' % torrent_id)
 
-        torrent_name = torrent.get_status(['name'])['name']
+        # Removing a torrent must not depend on a complete status response.
+        try:
+            torrent_name = torrent.get_name()
+        except (AttributeError, IndexError, RuntimeError):
+            torrent_name = torrent_id
 
         # Emit the signal to the clients
         component.get('EventManager').emit(PreTorrentRemovedEvent(torrent_id))
@@ -809,15 +813,10 @@ class TorrentManager(component.Component):
         )
         torrent.delete_torrentfile(delete_copies)
 
-        # Remove from set if it wasn't finished
-        if not torrent.is_finished:
-            try:
-                self.queued_torrents.remove(torrent_id)
-            except KeyError:
-                log.debug('%s is not in queued torrents set.', torrent_id)
-                raise InvalidTorrentError(
-                    '%s is not in queued torrents set.' % torrent_id
-                )
+        # A torrent may have left the queue during completion, or never been
+        # enqueued. Never raise after removing it from libtorrent, leaving
+        # Deluge's own torrent dictionary and UI inconsistent.
+        self.queued_torrents.discard(torrent_id)
 
         # Remove the torrent from deluge's session
         del self.torrents[torrent_id]
@@ -1725,7 +1724,9 @@ class TorrentManager(component.Component):
             if torrent_id in self.torrents:
                 self.torrents[torrent_id].status = t_status
 
-        self.handle_torrents_status_callback(self.torrents_status_requests.pop())
+        # An unsolicited or late state update need not have an RPC request.
+        if self.torrents_status_requests:
+            self.handle_torrents_status_callback(self.torrents_status_requests.pop())
 
     def on_alert_external_ip(self, alert):
         """Alert handler for libtorrent external_ip_alert"""
@@ -1778,16 +1779,21 @@ class TorrentManager(component.Component):
         status_dict = {}.fromkeys(torrent_ids)
         torrent_keys, plugin_keys = self.separate_keys(keys, torrent_ids)
 
-        # Get the torrent status for each torrent_id
-        for torrent_id in torrent_ids:
-            if torrent_id not in self.torrents:
-                # The torrent_id does not exist in the dict.
-                # Could be the clients cache (sessionproxy) isn't up to speed.
-                del status_dict[torrent_id]
-            else:
-                status_dict[torrent_id] = self.torrents[torrent_id].get_status(
-                    torrent_keys, diff, all_keys=not keys
-                )
+        try:
+            # The client's cache may still include a torrent just removed.
+            for torrent_id in torrent_ids:
+                if torrent_id not in self.torrents:
+                    del status_dict[torrent_id]
+                else:
+                    status_dict[torrent_id] = self.torrents[torrent_id].get_status(
+                        torrent_keys, diff, all_keys=not keys
+                    )
+        except Exception:
+            # Do not strand the GTK/console SessionProxy's pending request
+            # when a libtorrent status binding raises.
+            log.exception('Failed to build torrent status response')
+            d.errback()
+            return
         self.status_dict = status_dict
         d.callback((status_dict, plugin_keys))
 
