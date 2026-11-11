@@ -440,6 +440,11 @@ class TestWebTorrent(BaseTestCase):
                     f'progress={download_handle.status().progress})'
                 )
                 assert target.read_bytes() == payload
+                saved = Path(self.config_dir) / 'state' / f'{torrent_id}.torrent'
+                assert saved.is_file(), 'Received metadata was not saved as a torrent file'
+                saved_params = lt.load_torrent_buffer(saved.read_bytes())
+                assert str(saved_params.ti.info_hash()) == torrent_id
+                assert tracker_url in saved_params.trackers
             finally:
                 if seeder is not None:
                     seeder.pause()

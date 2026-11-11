@@ -1467,8 +1467,19 @@ class Torrent:
         filepath = os.path.join(get_config_dir(), 'state', self.torrent_id + '.torrent')
 
         if filedump is None:
-            lt_ct = lt.create_torrent(self.torrent_info)
-            filedump = lt.bencode(lt_ct.generate())
+            if getattr(lt, 'api_version', 1) >= 3:
+                # Preserve the original info dictionary (and its hashes), as
+                # well as the live tracker list when saving magnet metadata.
+                params = lt.add_torrent_params()
+                params.ti = self.torrent_info
+                trackers = self.handle.trackers()
+                params.trackers = [tracker['url'] for tracker in trackers]
+                params.tracker_tiers = [tracker['tier'] for tracker in trackers]
+                params.url_seeds = self.handle.url_seeds()
+                filedump = lt.write_torrent_file_buf(params)
+            else:
+                lt_ct = lt.create_torrent(self.torrent_info)
+                filedump = lt.bencode(lt_ct.generate())
 
         write_file(filepath, filedump)
 
