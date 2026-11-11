@@ -20,7 +20,10 @@ def check_torrent(filename):
     # Test loading with libtorrent to make sure it's valid
     from deluge._libtorrent import lt
 
-    lt.torrent_info(filename)
+    if hasattr(lt, 'load_torrent_file'):
+        assert lt.load_torrent_file(filename).ti.is_valid()
+    else:
+        assert lt.torrent_info(filename).is_valid()
 
     # Test loading with our internal TorrentInfo class
     from deluge.ui.common import TorrentInfo
