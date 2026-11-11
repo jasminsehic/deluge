@@ -428,7 +428,7 @@ class TestWebTorrent(BaseTestCase):
                     f'answers={tracker.answers_relayed}, '
                     f'seeder={seed_handle.status().is_seeding}, '
                     f'download_status={download_handle.status().state}, '
-                    f'download_paused={download_handle.status().paused}, '
+                    f'download_paused={bool(download_handle.status().flags & lt.torrent_flags.paused)}, '
                     f'download_error={download_handle.status().errc.message()}, '
                     f'trackers={download_handle.trackers()})'
                 )
