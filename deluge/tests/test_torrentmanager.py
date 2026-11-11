@@ -24,7 +24,7 @@ from deluge.core.torrentmanager import (
     _torrent_info_from_bytes,
     _tracker_endpoint_has_no_error,
 )
-from deluge.error import InvalidTorrentError
+from deluge.error import AddTorrentError, InvalidTorrentError
 
 from . import common
 
@@ -133,6 +133,37 @@ class TestTorrentmanager(BaseTestCase):
         self.tm.queued_torrents.discard(torrent_id)
         assert self.tm.remove(torrent_id, False)
         assert torrent_id not in self.tm.torrents
+
+    async def test_duplicate_torrent_merges_trackers_from_modern_params(self):
+        """ABI 4 no longer exposes trackers on torrent_info."""
+        from deluge._libtorrent import lt
+
+        if getattr(lt, 'api_version', 1) < 3:
+            pytest.skip('Modern add_torrent_params is unavailable')
+
+        filename = common.get_test_data_file('test.torrent')
+        with open(filename, 'rb') as source:
+            data = source.read()
+        torrent_id = await self.core.add_torrent_file_async(
+            filename, b64encode(data), {}
+        )
+        params = lt.load_torrent_buffer(data)
+        assert not params.ti.priv()
+        url = 'wss://tracker.example.com/announce'
+        params.trackers = [url]
+        params.tracker_tiers = [2]
+
+        with pytest.raises(AddTorrentError, match='already in session'):
+            self.tm._build_torrent_params(
+                torrent_info=params.ti,
+                options=self.tm._build_torrent_options({}),
+                file_params=params,
+            )
+
+        assert any(
+            tracker['url'] == url and tracker['tier'] == 2
+            for tracker in self.tm.torrents[torrent_id].handle.trackers()
+        )
 
     @pytest_twisted.inlineCallbacks
     def test_remove_torrent(self):
