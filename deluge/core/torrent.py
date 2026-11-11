@@ -1031,7 +1031,16 @@ class Torrent:
         return ''
 
     def get_magnet_uri(self):
-        """Returns a magnet URI for this torrent"""
+        """Returns a magnet URI for this torrent."""
+        if getattr(lt, 'api_version', 1) >= 4:
+            # The torrent_handle overload was removed in the modern ABI.
+            params = lt.add_torrent_params()
+            params.info_hashes = self.handle.info_hashes()
+            params.name = self.get_name()
+            trackers = self.handle.trackers()
+            params.trackers = [entry['url'] for entry in trackers]
+            params.tracker_tiers = [entry['tier'] for entry in trackers]
+            return lt.make_magnet_uri(params)
         return lt.make_magnet_uri(self.handle)
 
     def get_name(self):
