@@ -180,6 +180,15 @@ class TestAnacrolixInterop(BaseTestCase):
                 deluge_handle().resume()
                 deluge_handle().force_reannounce()
             else:
+                # Register the independent downloader first, so its RTC offers
+                # are available when the Deluge seeder joins the WSS tracker.
+                start_anacrolix('download')
+                deadline = reactor.seconds() + 45
+                while 'READY download' not in go_log() and reactor.seconds() < deadline:
+                    assert process.poll() is None, f'Anacrolix exited: {go_log()}'
+                    yield task.deferLater(reactor, 0.2, lambda: None)
+                assert 'READY download' in go_log(), f'Anacrolix not ready: {go_log()}'
+
                 torrent_id = self.core.add_torrent_file(
                     'interop.torrent',
                     base64.b64encode(torrent_bytes),
@@ -190,6 +199,9 @@ class TestAnacrolixInterop(BaseTestCase):
                     },
                 )
                 assert torrent_id == info_hash
+                assert any(
+                    item['url'] == tracker_url for item in deluge_handle().trackers()
+                ), 'Deluge seeder lost its WSS tracker'
                 deadline = reactor.seconds() + 45
                 while (
                     not deluge_handle().status().is_seeding
@@ -199,7 +211,8 @@ class TestAnacrolixInterop(BaseTestCase):
                 assert deluge_handle().status().is_seeding, (
                     'Deluge seed file failed verification'
                 )
-                start_anacrolix('download')
+                deluge_handle().resume()
+                deluge_handle().force_reannounce()
 
             deadline = reactor.seconds() + 120
             dest = (
@@ -246,6 +259,7 @@ class TestAnacrolixInterop(BaseTestCase):
             raise AssertionError(
                 f'{direction}: {exc}; offers={tracker.offers_relayed}; '
                 f'answers={tracker.answers_relayed}; '
+                f'announces={tracker.announces!r}; '
                 f'deluge_status={deluge_handle().status() if torrent_id else None}; '
                 f'anacrolix_log={go_log() if stdout else None}; logs={root}'
             ) from exc
