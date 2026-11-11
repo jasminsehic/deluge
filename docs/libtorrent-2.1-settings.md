@@ -27,9 +27,12 @@ Magnet additions use the modern `add_torrent_params` binding for ABI 3 and
 newer, including the `info_hashes` field, while retaining the legacy
 dictionary path for older ABI builds.
 
-The RTC native transfer test and Deluge loopback WSS announce test verify
-different portions of the integration. A complete Deluge-to-WebRTC peer
-piece transfer via live WebSocket signaling is not yet part of this suite.
+The dedicated WebTorrent integration suite verifies native RTC piece and
+metadata transfer, a live loopback WSS tracker announce, and a complete
+WSS-discovered WebRTC download through Deluge. The end-to-end test checks
+both payload integrity and that the saved torrent retains the original
+info hash and WSS tracker. ICE host candidates are used locally without
+requiring a public STUN server.
 
 The libtorrent 2.1 ABI uses `session.session_state()` and
 `write_session_params_buf()` for persistence, and `read_session_params()`
