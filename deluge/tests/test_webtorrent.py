@@ -7,6 +7,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+from base64 import b64encode
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -264,6 +265,44 @@ class TestWebTorrent(BaseTestCase):
         saved = lt.load_torrent_buffer((state / f'{info_hash}.torrent').read_bytes())
         assert str(saved.ti.info_hash()) == info_hash
         assert saved.trackers == [tracker]
+
+    @pytest.mark.parametrize('async_add', [False, True])
+    @pytest_twisted.inlineCallbacks
+    def test_torrent_file_add_preserves_wss_trackers(self, async_add):
+        """Torrent-file imports retain the WSS trackers from their announce list."""
+        from deluge._libtorrent import lt
+
+        with tempfile.TemporaryDirectory() as directory:
+            payload = b'webtorrent tracker retention'
+            creator = lt.create_torrent(
+                [lt.create_file_entry('tracker-retention.bin', len(payload))],
+                16384,
+                lt.create_torrent.v1_only,
+            )
+            creator.set_hash(0, hashlib.sha1(payload).digest())
+            tracker_url = 'wss://127.0.0.1:1/announce'
+            creator.add_tracker(tracker_url)
+            filedump = b64encode(lt.bencode(creator.generate()))
+            options = {
+                'download_location': directory,
+                'add_paused': True,
+                'auto_managed': False,
+            }
+
+            if async_add:
+                torrent_id = yield self.core.add_torrent_file_async(
+                    'tracker-retention.torrent', filedump, options
+                )
+            else:
+                torrent_id = self.core.add_torrent_file(
+                    'tracker-retention.torrent', filedump, options
+                )
+
+            try:
+                handle = self.core.torrentmanager.torrents[torrent_id].handle
+                assert tracker_url in [entry['url'] for entry in handle.trackers()]
+            finally:
+                self.core.remove_torrent(torrent_id, remove_data=False)
 
     def test_current_session_state_roundtrip(self):
         from deluge._libtorrent import lt
