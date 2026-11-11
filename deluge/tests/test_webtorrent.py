@@ -44,6 +44,8 @@ class LoopbackWssTracker:
                 '1',
                 '-subj',
                 '/CN=localhost',
+                '-addext',
+                'subjectAltName=IP:127.0.0.1',
                 '-keyout',
                 str(key),
                 '-out',
