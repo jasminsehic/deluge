@@ -66,6 +66,21 @@ class TestTorrent(BaseTestCase):
         )
         assert Torrent.get_file_progress(torrent) == [0.0, 0.0]
 
+    def test_manual_pause_sets_native_paused_flag(self):
+        """A user pause command must stop the libtorrent torrent itself."""
+        atp = self.get_torrent_atp('test.torrent')
+        handle = self.session.add_torrent(atp)
+        torrent = Torrent(handle, {'auto_managed': False})
+        torrent.resume()
+        torrent.pause()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if handle.status().flags & lt.torrent_flags.paused:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail('Deluge manual pause did not pause the libtorrent handle')
+
     def test_torrent_status_flags(self):
         status = SimpleNamespace(
             flags=lt.torrent_flags.paused | lt.torrent_flags.auto_managed
