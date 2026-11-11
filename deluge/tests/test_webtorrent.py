@@ -478,7 +478,7 @@ class TestWebTorrent(BaseTestCase):
                     magnet,
                     {
                         'download_location': str(download_dir),
-                        'add_paused': False,
+                        'add_paused': True,
                         'auto_managed': False,
                     },
                 )
@@ -487,7 +487,24 @@ class TestWebTorrent(BaseTestCase):
                 assert any(
                     entry['url'] == tracker_url for entry in download_handle.trackers()
                 ), 'Deluge did not retain the WSS tracker from the torrent file'
-                download_handle.resume()
+                # Exercise the real Deluge RPC-facing pause status. A magnet
+                # added paused must not transfer metadata or payload until
+                # explicitly resumed, even when the WSS seeder is available.
+                paused_status = self.core.get_torrent_status(
+                    torrent_id, ['paused', 'num_peers', 'num_seeds', 'total_payload_download']
+                )
+                assert paused_status['paused'], paused_status
+                paused_downloaded = paused_status['total_payload_download']
+                yield task.deferLater(reactor, 1.0, lambda: None)
+                paused_again = self.core.get_torrent_status(
+                    torrent_id, ['paused', 'total_payload_download']
+                )
+                assert paused_again['paused'], paused_again
+                assert paused_again['total_payload_download'] == paused_downloaded, (
+                    'Payload was transferred while the torrent was paused'
+                )
+
+                self.core.resume_torrent(torrent_id)
                 download_handle.force_reannounce()
 
                 deadline = reactor.seconds() + 90
@@ -527,6 +544,29 @@ class TestWebTorrent(BaseTestCase):
                     f'download_error={download_handle.status().errc.message()})'
                 )
                 assert target.read_bytes() == payload
+
+                # Verify the status shape consumed by the Files and Peers
+                # tabs, not only the raw native torrent_handle state.
+                deluge_status = self.core.get_torrent_status(
+                    torrent_id,
+                    [
+                        'files', 'file_progress', 'file_priorities', 'num_files',
+                        'num_peers', 'num_seeds', 'peers', 'progress', 'paused',
+                    ],
+                )
+                assert deluge_status['num_files'] == 1, deluge_status
+                assert len(deluge_status['files']) == 1, deluge_status
+                assert deluge_status['files'][0]['path'].endswith(filename), (
+                    deluge_status
+                )
+                assert len(deluge_status['file_progress']) == 1, deluge_status
+                assert deluge_status['file_progress'][0] == 1.0, deluge_status
+                assert not deluge_status['paused'], deluge_status
+                assert deluge_status['progress'] == 100, deluge_status
+                assert isinstance(deluge_status['peers'], list), deluge_status
+                assert deluge_status['num_peers'] >= 0
+                assert deluge_status['num_seeds'] >= 0
+
                 saved = Path(self.config_dir) / 'state' / f'{torrent_id}.torrent'
                 assert saved.is_file(), (
                     'Received metadata was not saved as a torrent file'
