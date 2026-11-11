@@ -202,6 +202,7 @@ jobs:
           import libtorrent as lt
           assert pathlib.Path(lt.__file__).resolve().name.startswith('libtorrent')
           assert tuple(int(x) for x in lt.__version__.split('.')[:2]) >= (2, 1), lt.__version__
+          assert lt.api_version >= 4, ('Deprecated APIs are still enabled', lt.api_version)
           session = lt.session()
           settings = session.get_settings()
           assert 'webtorrent_stun_server' in settings, ('RTC support absent', lt.__file__)
@@ -225,6 +226,12 @@ jobs:
             deluge/tests/test_torrent.py::TestTorrent::test_full_torrent_status_with_native_binding `
             deluge/tests/test_torrentmanager.py::TestTorrentmanager::test_full_core_status_and_state_update
           if ($LASTEXITCODE -ne 0) { throw 'Native Windows GUI status/removal regressions failed' }
+
+      - name: Verify torrent creation and peer-info API on native ABI
+        shell: pwsh
+        run: |
+          python -m pytest -v deluge/tests/test_metafile.py deluge/tests/test_torrent.py::TestTorrent::test_native_peer_info_binding_contract
+          if ($LASTEXITCODE -ne 0) { throw 'Native libtorrent metadata/peer ABI regressions failed' }
 
       - name: Install GTK runtime and Python GTK bindings
         shell: pwsh
