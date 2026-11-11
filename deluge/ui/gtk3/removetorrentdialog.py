@@ -55,11 +55,11 @@ class RemoveTorrentDialog:
         label_torrents = self.builder.get_object('label_torrents')
         num_torrents = len(self.__torrent_ids)
         if num_torrents == 1:
-            label_torrents.set_markup(
-                component.get('TorrentView').get_torrent_status(self.__torrent_ids[0])[
-                    'name'
-                ]
-            )
+            # The torrent view can have a partial status while the daemon
+            # refreshes its cache. Removal must still remain available.
+            torrent_id = self.__torrent_ids[0]
+            status = component.get('TorrentView').get_torrent_status(torrent_id)
+            label_torrents.set_text(status.get('name') or torrent_id)
         else:
             label_title.set_markup(_('Remove the selected torrents?'))
             label_torrents.set_markup(_('Total of %s torrents selected') % num_torrents)
