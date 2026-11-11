@@ -368,7 +368,7 @@ class TestWebTorrent(BaseTestCase):
                     'enable_upnp': False,
                     'enable_natpmp': False,
                     'validate_https_trackers': False,
-                    'webtorrent_stun_server': 'stun.l.google.com:19302',
+                    'webtorrent_stun_server': '',
                 }
                 self.core.apply_session_settings(settings)
 
@@ -437,7 +437,11 @@ class TestWebTorrent(BaseTestCase):
                     'No completed RTC payload transfer '
                     f'(offers={tracker.offers_relayed}, '
                     f'answers={tracker.answers_relayed}, '
-                    f'progress={download_handle.status().progress})'
+                    f'progress={download_handle.status().progress}, '
+                    f'download_peers={download_handle.status().num_peers}, '
+                    f'seed_peers={seed_handle.status().num_peers}, '
+                    f'download_state={download_handle.status().state}, '
+                    f'download_error={download_handle.status().errc.message()})'
                 )
                 assert target.read_bytes() == payload
                 saved = Path(self.config_dir) / 'state' / f'{torrent_id}.torrent'
