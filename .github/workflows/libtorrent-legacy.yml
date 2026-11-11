@@ -1,9 +1,6 @@
 name: Libtorrent API version compatibility
 
 on:
-  push:
-    branches:
-      - feature/webtorrent-anacrolix-interop
   pull_request:
   workflow_dispatch:
 
