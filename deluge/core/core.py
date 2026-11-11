@@ -137,6 +137,7 @@ class Core(component.Component):
                 )
 
         component.Component.__init__(self, 'Core')
+        self._stopping = False
 
         # Start the libtorrent session.
         user_agent = f'Deluge/{DELUGE_VER} libtorrent/{LT_VERSION}'
@@ -249,6 +250,7 @@ class Core(component.Component):
 
     def stop(self):
         log.debug('Core stopping...')
+        self._stopping = True
 
         if self.session_status_timer.running:
             self.session_status_timer.stop()
@@ -446,19 +448,27 @@ class Core(component.Component):
     def get_new_release(self):
         log.debug('get_new_release')
         try:
-            # Use HTTPS URL to avoid potential spoofing of release page.
-            self.new_release = (
-                urlopen('https://ftp.osuosl.org/pub/deluge/version-2.0')
+            # This runs on a worker thread; never access Deluge components here.
+            version = (
+                urlopen('https://ftp.osuosl.org/pub/deluge/version-2.0', timeout=10)
                 .read()
                 .decode()
                 .strip()
             )
-        except URLError as ex:
+        except OSError as ex:
             log.debug('Unable to get release info from website: %s', ex)
         else:
+            reactor.callFromThread(self._on_new_release_checked, version)
+
+    def _on_new_release_checked(self, version):
+        """Deliver the network result on the reactor thread if Core is still active."""
+        if not self._stopping:
+            self.new_release = version
             self.check_new_release()
 
     def check_new_release(self):
+        if self._stopping:
+            return False
         if self.new_release:
             log.debug('new_release: %s', self.new_release)
             if deluge.common.VersionSplit(

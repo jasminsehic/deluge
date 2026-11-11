@@ -6,6 +6,7 @@
 import base64
 import os
 from base64 import b64encode
+from unittest import mock
 from hashlib import sha1 as sha
 
 import pytest
@@ -126,6 +127,37 @@ class TestCore(BaseTestCase):
             filedump = b64encode(_file.read())
         torrent_id = self.core.add_torrent_file(filename, filedump, options)
         return torrent_id
+
+    def test_release_check_is_delivered_on_reactor_thread(self):
+        with (
+            mock.patch('deluge.core.core.urlopen') as opener,
+            mock.patch('deluge.core.core.reactor.callFromThread') as schedule,
+        ):
+            opener.return_value.read.return_value = b'99.0.0'
+            self.core.get_new_release()
+
+        opener.assert_called_once_with(
+            'https://ftp.osuosl.org/pub/deluge/version-2.0', timeout=10
+        )
+        schedule.assert_called_once()
+        callback, version = schedule.call_args.args
+        assert version == '99.0.0'
+
+        with mock.patch.object(self.core, 'check_new_release') as check:
+            self.core._stopping = True
+            callback(version)
+            check.assert_not_called()
+            self.core._stopping = False
+            callback(version)
+            check.assert_called_once_with()
+            assert self.core.new_release == '99.0.0'
+
+    def test_release_check_cannot_emit_after_core_stops(self):
+        self.core.new_release = '99.0.0'
+        self.core._stopping = True
+        with mock.patch('deluge.core.core.component.get') as get_component:
+            assert self.core.check_new_release() is False
+            get_component.assert_not_called()
 
     @pytest_twisted.inlineCallbacks
     def test_add_torrent_files(self):
