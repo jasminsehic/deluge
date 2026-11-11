@@ -82,14 +82,14 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
         run: |
-          $GITHUB_WORKSPACE/.venv/bin/python -c 'import libtorrent as lt; print(lt.__version__); assert tuple(map(int, lt.__version__.split(".")[:2])) >= (2, 1); assert "webtorrent_stun_server" in lt.session().get_settings()'
+          $GITHUB_WORKSPACE/.venv/bin/python -c 'import libtorrent as lt; print(lt.__version__, "ABI", lt.api_version); assert tuple(map(int, lt.__version__.split(".")[:2])) >= (2, 1); assert lt.api_version >= 4, "Native tests must use an ABI without deprecated APIs"; assert "webtorrent_stun_server" in lt.session().get_settings()'
           $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v deluge/tests/test_webtorrent.py -m webtorrent
 
       - name: Check Deluge regression tests with native libtorrent
         working-directory: deluge
         env:
           PYTHONPATH: ${{ github.workspace }}/libtorrent-build/bindings/python
-        run: $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py deluge/tests/test_session_settings_compat.py
+        run: $GITHUB_WORKSPACE/.venv/bin/python -m pytest -v -m 'not (todo or gtkui or internet)' deluge/tests/test_common.py deluge/tests/test_torrent.py deluge/tests/test_torrentmanager.py deluge/tests/test_session_settings_compat.py deluge/tests/test_metafile.py
 
       - name: Checkout independent Anacrolix/Pion torrent client
         uses: actions/checkout@v4
