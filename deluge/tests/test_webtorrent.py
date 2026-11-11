@@ -1,11 +1,13 @@
 """WSS tracker integration for Deluge's WebTorrent-enabled libtorrent session."""
 
 import asyncio
+import hashlib
 import json
 import ssl
 import subprocess
 import tempfile
 import threading
+from base64 import b64encode
 from pathlib import Path
 
 import pytest
@@ -108,6 +110,107 @@ class LoopbackWssTracker:
             asyncio.run_coroutine_threadsafe(close(), self.loop).result(10)
             self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=10)
+
+
+class RelayWssTracker(LoopbackWssTracker):
+    """Minimal real WebTorrent tracker that relays RTC offers and answers."""
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        self.offers_relayed = 0
+        self.answers_relayed = 0
+
+    def run(self, context):
+        from websockets.legacy.server import serve
+
+        peers = {}
+        pending_offers = {}
+
+        async def handler(websocket):
+            owned = set()
+            try:
+                async for payload in websocket:
+                    request = json.loads(payload)
+                    if request.get('action') != 'announce':
+                        continue
+
+                    info_hash = request['info_hash']
+                    peer_id = request['peer_id']
+
+                    if 'answer' in request:
+                        target = peers.get((info_hash, request['to_peer_id']))
+                        if target is not None:
+                            await target.send(
+                                json.dumps(
+                                    {
+                                        'action': 'announce',
+                                        'info_hash': info_hash,
+                                        'peer_id': peer_id,
+                                        'offer_id': request['offer_id'],
+                                        'answer': request['answer'],
+                                    }
+                                )
+                            )
+                            self.answers_relayed += 1
+                        continue
+
+                    key = (info_hash, peer_id)
+                    peers[key] = websocket
+                    owned.add(key)
+                    self.announced.set()
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                'action': 'announce',
+                                'info_hash': info_hash,
+                                'interval': 120,
+                                'min_interval': 60,
+                            }
+                        )
+                    )
+
+                    for offer in pending_offers.get(info_hash, []):
+                        if offer['peer_id'] != peer_id:
+                            await websocket.send(json.dumps(offer))
+                            self.offers_relayed += 1
+
+                    # One offer per announce is sufficient for this two-peer
+                    # test; limiting it avoids hundreds of redundant ICE peers.
+                    for offer in request.get('offers', [])[:1]:
+                        forwarded = {
+                            'action': 'announce',
+                            'info_hash': info_hash,
+                            'peer_id': peer_id,
+                            'offer_id': offer['offer_id'],
+                            'offer': offer['offer'],
+                        }
+                        pending_offers.setdefault(info_hash, []).append(forwarded)
+                        for (other_hash, other_id), other in list(peers.items()):
+                            if other_hash == info_hash and other_id != peer_id:
+                                await other.send(json.dumps(forwarded))
+                                self.offers_relayed += 1
+            finally:
+                for key in owned:
+                    if peers.get(key) is websocket:
+                        peers.pop(key)
+
+        async def start_server():
+            self.server = await serve(handler, '127.0.0.1', 0, ssl=context)
+            self.port = self.server.sockets[0].getsockname()[1]
+
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(start_server())
+        except Exception as exc:
+            self.error = exc
+        finally:
+            self.ready.set()
+        if self.error:
+            self.loop.close()
+            return
+        self.loop.run_forever()
+        self.loop.close()
 
 
 @pytest.mark.internet
@@ -219,4 +322,100 @@ class TestWebTorrent(BaseTestCase):
                 assert tracker.request['action'] == 'announce'
                 assert tracker.request.get('offers'), 'No WebRTC offers announced'
             finally:
+                tracker.stop()
+
+    @pytest_twisted.inlineCallbacks
+    def test_wss_discovers_rtc_peer_and_transfers_verified_pieces(self):
+        """Download payload from a WSS-discovered RTC seeder into Deluge."""
+        from deluge._libtorrent import lt
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            seed_dir = root / 'seed'
+            download_dir = root / 'download'
+            seed_dir.mkdir()
+            download_dir.mkdir()
+            filename = 'rtc-payload.bin'
+            payload = bytes(range(256)) * 192
+            (seed_dir / filename).write_bytes(payload)
+
+            tracker = RelayWssTracker(directory)
+            tracker.start()
+            seeder = None
+            try:
+                tracker_url = f'wss://127.0.0.1:{tracker.port}/announce'
+                piece_size = 16384
+                creator = lt.create_torrent(
+                    [lt.create_file_entry(filename, len(payload))],
+                    piece_size,
+                    lt.create_torrent.v1_only,
+                )
+                for index in range(creator.num_pieces()):
+                    start = index * piece_size
+                    creator.set_hash(
+                        index,
+                        hashlib.sha1(payload[start : start + piece_size]).digest(),
+                    )
+                creator.add_tracker(tracker_url)
+                torrent_bytes = lt.bencode(creator.generate())
+
+                settings = {
+                    'enable_dht': False,
+                    'enable_lsd': False,
+                    'enable_upnp': False,
+                    'enable_natpmp': False,
+                    'validate_https_trackers': False,
+                    'webtorrent_stun_server': '',
+                }
+                self.core.apply_session_settings(settings)
+
+                seeder = lt.session(
+                    {
+                        **settings,
+                        'listen_interfaces': '127.0.0.1:0',
+                    }
+                )
+                seed_params = lt.load_torrent_buffer(torrent_bytes)
+                seed_params.save_path = str(seed_dir)
+                seed_params.flags &= ~lt.torrent_flags.paused
+                seed_params.flags &= ~lt.torrent_flags.auto_managed
+                seed_handle = seeder.add_torrent(seed_params)
+
+                deadline = reactor.seconds() + 15
+                while not seed_handle.status().is_seeding and reactor.seconds() < deadline:
+                    yield task.deferLater(reactor, 0.2, lambda: None)
+                assert seed_handle.status().is_seeding, 'RTC seeder did not hash its file'
+
+                torrent_id = yield self.core.add_torrent_file_async(
+                    'rtc-payload.torrent',
+                    b64encode(torrent_bytes),
+                    {
+                        'download_location': str(download_dir),
+                        'add_paused': False,
+                        'auto_managed': False,
+                    },
+                    save_state=False,
+                )
+                assert torrent_id
+                download_handle = self.core.torrentmanager.torrents[torrent_id].handle
+
+                deadline = reactor.seconds() + 60
+                while reactor.seconds() < deadline:
+                    if download_handle.status().is_seeding:
+                        break
+                    yield task.deferLater(reactor, 0.2, lambda: None)
+
+                target = download_dir / filename
+                assert tracker.offers_relayed > 0, 'No offer crossed the WSS tracker'
+                assert tracker.answers_relayed > 0, 'No answer crossed the WSS tracker'
+                assert download_handle.status().is_seeding, (
+                    'No completed RTC payload transfer '
+                    f'(offers={tracker.offers_relayed}, '
+                    f'answers={tracker.answers_relayed}, '
+                    f'progress={download_handle.status().progress})'
+                )
+                assert target.read_bytes() == payload
+            finally:
+                if seeder is not None:
+                    seeder.pause()
                 tracker.stop()
