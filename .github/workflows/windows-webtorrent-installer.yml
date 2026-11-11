@@ -174,6 +174,26 @@ jobs:
           python setup.py install_scripts
           if ($LASTEXITCODE -ne 0) { throw 'Deluge scripts installation failed' }
 
+      - name: Apply Deluge's existing Twisted Windows GLib reactor patch
+        shell: bash
+        run: |
+          SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+          cd "$SITE_PACKAGES"
+          patch --batch --forward -p1 < "$GITHUB_WORKSPACE/.github/patches/twisted-glib-windows.patch"
+          python - <<'PY'
+          from twisted.internet import _glibbase
+          from twisted.internet._signals import _SocketWaker
+          from twisted.python.runtime import platformType
+          import inspect
+
+          assert platformType == "win32"
+          assert issubclass(_glibbase.GlibWaker, _SocketWaker)
+          assert "IOChannel.win32_new_socket" in inspect.getsource(
+              _glibbase.GlibReactorBase.input_add
+          )
+          print("Standard Deluge Twisted Windows patch verified")
+          PY
+
       - name: Confirm native RTC support (reject published wheel)
         shell: pwsh
         run: |
@@ -210,6 +230,21 @@ jobs:
           python -m pip install --no-index --find-links="C:\GTK\release\python" pycairo PyGObject
           if ($LASTEXITCODE -ne 0) { throw 'GTK Python bindings failed' }
 
+      - name: Verify Windows GTK reactor starts with socket-based waker
+        shell: pwsh
+        run: |
+          @'
+          from twisted.internet import gtk3reactor
+          from twisted.internet._signals import _SocketWaker
+
+          reactor = gtk3reactor.install()
+          assert isinstance(reactor.waker, _SocketWaker), type(reactor.waker)
+          reactor.callLater(0.2, reactor.stop)
+          reactor.run(installSignalHandlers=False)
+          print('Windows GTK reactor started and stopped successfully')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows GTK reactor startup failed' }
+
       - name: Install NSIS
         shell: pwsh
         run: |
@@ -232,6 +267,21 @@ jobs:
           }
           & .\freeze\Deluge\deluged-debug.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Frozen daemon failed startup smoke test' }
+
+          # Exercise the actual GTK UI, not only the headless daemon.
+          $output = Join-Path $env:RUNNER_TEMP 'deluge-frozen-gtk.out.log'
+          $errors = Join-Path $env:RUNNER_TEMP 'deluge-frozen-gtk.err.log'
+          $exe = (Resolve-Path .\freeze\Deluge\deluge-debug.exe).Path
+          $gui = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $output -RedirectStandardError $errors
+          Start-Sleep -Seconds 8
+          $gui.Refresh()
+          if ($gui.HasExited) {
+            Get-Content $output, $errors -ErrorAction SilentlyContinue
+            throw "Frozen GTK UI exited during startup (exit $($gui.ExitCode))"
+          }
+          $gui.Kill()
+          $gui.WaitForExit()
+          Write-Host 'Frozen GTK UI remained active through startup'
 
       - name: Build NSIS Windows x64 installer
         working-directory: packaging/win
@@ -281,3 +331,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed Deluge daemon failed startup' }
           & "$install/deluge-console.exe" --help
           if ($LASTEXITCODE -ne 0) { throw 'Installed Deluge console failed startup' }
+
+          # Verify the installed GUI runs, catching frozen-only startup bugs.
+          $output = Join-Path $env:RUNNER_TEMP 'deluge-installed-gtk.out.log'
+          $errors = Join-Path $env:RUNNER_TEMP 'deluge-installed-gtk.err.log'
+          $gui = Start-Process -FilePath "$install/deluge-debug.exe" -PassThru -RedirectStandardOutput $output -RedirectStandardError $errors
+          Start-Sleep -Seconds 8
+          $gui.Refresh()
+          if ($gui.HasExited) {
+            Get-Content $output, $errors -ErrorAction SilentlyContinue
+            throw "Installed GTK UI exited during startup (exit $($gui.ExitCode))"
+          }
+          $gui.Kill()
+          $gui.WaitForExit()
+          Write-Host 'Installed GTK UI remained active through startup'
