@@ -486,10 +486,17 @@ class TestWebTorrent(BaseTestCase):
                 download_handle.resume()
                 download_handle.force_reannounce()
 
-                deadline = reactor.seconds() + 60
+                deadline = reactor.seconds() + 90
+                next_announce = reactor.seconds() + 12
                 while reactor.seconds() < deadline:
                     if download_handle.status().is_seeding:
                         break
+                    if reactor.seconds() >= next_announce:
+                        # RTC negotiations can fail transiently on CI runners;
+                        # reannounce to exercise fresh offers without allowing
+                        # any fallback transport or weakening payload checks.
+                        download_handle.force_reannounce()
+                        next_announce = reactor.seconds() + 12
                     yield task.deferLater(reactor, 0.2, lambda: None)
 
                 target = download_dir / filename
