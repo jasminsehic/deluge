@@ -137,10 +137,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Python requirements failed' }
           python -m pip check
           if ($LASTEXITCODE -ne 0) { throw 'Python dependency verification failed' }
-          python -m pip uninstall -y libtorrent
-          if ($LASTEXITCODE -ne 0) { throw 'Official libtorrent removal failed' }
+          # Preserve installed wheel metadata for PyInstaller's recursive
+          # dependency scanner; replace its native module with our compiled
+          # RTC-enabled fork rather than distributing the published binary.
           $site = python -c "import sysconfig; print(sysconfig.get_path('platlib'))"
-          Copy-Item $env:CUSTOM_LT_PYD (Join-Path $site (Split-Path $env:CUSTOM_LT_PYD -Leaf)) -Force
+          $existing = @(Get-ChildItem $site -Filter 'libtorrent*.pyd' -File)
+          if ($existing.Count -ne 1) {
+            throw "Expected one installed libtorrent extension, found $($existing.Count)"
+          }
+          $existing | Remove-Item -Force
+          $target = Join-Path $site (Split-Path $env:CUSTOM_LT_PYD -Leaf)
+          Copy-Item $env:CUSTOM_LT_PYD $target -Force
+          if ((Get-FileHash $target -Algorithm SHA256).Hash -ne (Get-FileHash $env:CUSTOM_LT_PYD -Algorithm SHA256).Hash) {
+            throw 'Installed libtorrent extension differs from custom native build'
+          }
           python -m pip install --no-deps .
           if ($LASTEXITCODE -ne 0) { throw 'Deluge installation failed' }
           python setup.py install_scripts
