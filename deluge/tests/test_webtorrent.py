@@ -259,9 +259,7 @@ class TestWebTorrent(BaseTestCase):
         state.mkdir(exist_ok=True)
         Torrent.write_torrentfile(torrent)
 
-        saved = lt.load_torrent_buffer(
-            (state / f'{info_hash}.torrent').read_bytes()
-        )
+        saved = lt.load_torrent_buffer((state / f'{info_hash}.torrent').read_bytes())
         assert str(saved.ti.info_hash()) == info_hash
         assert saved.trackers == [tracker]
 
