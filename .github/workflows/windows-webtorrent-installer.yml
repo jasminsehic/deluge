@@ -1,0 +1,252 @@
+name: Windows WebTorrent 2.1 Installer
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/windows-webtorrent-installer.yml
+      - packaging/win/**
+      - deluge/**
+      - requirements*.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-webtorrent-build:
+    name: Build Windows x64 WebTorrent installer
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      LT_COMMIT: 0bc49658f973321a515f73bee9b104688f3e481b
+      BOOST_VERSION: boost-1.90.0
+
+    steps:
+      - name: Checkout Deluge fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set fork development package version
+        shell: pwsh
+        run: Set-Content -Path RELEASE-VERSION -Value '2.2.0.dev0' -NoNewline
+
+      - name: Checkout pinned WebTorrent-enabled libtorrent
+        uses: actions/checkout@v4
+        with:
+          repository: jasminsehic/libtorrent
+          ref: 0bc49658f973321a515f73bee9b104688f3e481b
+          submodules: recursive
+          path: libtorrent-src
+          persist-credentials: false
+
+      - name: Setup Python x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          architecture: x64
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip 'setuptools<82' wheel
+          cmake --version
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+
+      - name: Build OpenSSL 3 static dependencies
+        shell: pwsh
+        run: |
+          Push-Location libtorrent-src/tools
+          vcpkg install --triplet=x64-windows-static
+          Pop-Location
+          $openssl = Join-Path $env:GITHUB_WORKSPACE 'libtorrent-src/tools/vcpkg_installed/x64-windows-static'
+          if (!(Test-Path "$openssl/include/openssl/ssl.h")) {
+            throw "OpenSSL headers missing: $openssl"
+          }
+          if (!(Test-Path "$openssl/lib/libssl.lib")) {
+            throw "OpenSSL static library missing: $openssl"
+          }
+          "OPENSSL_ROOT_DIR=$openssl" >> $env:GITHUB_ENV
+
+      - name: Build matching static Boost.Python for Python 3.10
+        shell: pwsh
+        run: |
+          git clone --depth=1 --recurse-submodules -j10 --branch "${{ env.BOOST_VERSION }}" https://github.com/boostorg/boost.git boost
+          Push-Location boost
+          & .\bootstrap.bat
+          if ($LASTEXITCODE -ne 0) { throw 'Boost bootstrap failed' }
+          & .\b2.exe headers
+          if ($LASTEXITCODE -ne 0) { throw 'Boost headers failed' }
+          & .\b2.exe --with-python variant=release address-model=64 link=static runtime-link=shared threading=multi --layout=versioned -j4 stage
+          if ($LASTEXITCODE -ne 0) { throw 'Boost.Python build failed' }
+          Pop-Location
+          $boostPython = Get-ChildItem boost/stage/lib -Filter '*boost_python310*.lib' | Select-Object -First 1
+          if (!$boostPython) {
+            Get-ChildItem boost/stage/lib
+            throw 'Matching static Boost.Python 3.10 library not found'
+          }
+          Write-Host "Boost.Python: $($boostPython.FullName)"
+          "BOOST_ROOT=$env:GITHUB_WORKSPACE/boost" >> $env:GITHUB_ENV
+          "BOOST_LIBRARYDIR=$env:GITHUB_WORKSPACE/boost/stage/lib" >> $env:GITHUB_ENV
+
+      - name: Configure Windows libtorrent 2.1 with RTC/WebTorrent
+        shell: pwsh
+        run: |
+          cmake -S libtorrent-src -B libtorrent-build -G 'Visual Studio 17 2022' -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_STANDARD=17 `
+            -DBUILD_SHARED_LIBS=OFF `
+            -Dstatic_runtime=OFF `
+            -Dwebtorrent=ON `
+            -Dpython-bindings=ON `
+            -Dbuild_tests=OFF `
+            -Ddeprecated-functions=OFF `
+            -Dskip-python-runtime-test=ON `
+            -DBoost_NO_BOOST_CMAKE=ON `
+            -DBoost_USE_STATIC_LIBS=ON `
+            -DBOOST_ROOT="$env:BOOST_ROOT" `
+            -DBOOST_LIBRARYDIR="$env:BOOST_LIBRARYDIR" `
+            -Dboost-python-module-name=python310 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DOPENSSL_USE_STATIC_LIBS=ON `
+            "-DPython3_EXECUTABLE=$((Get-Command python).Source)"
+          if ($LASTEXITCODE -ne 0) { throw 'libtorrent CMake configure failed' }
+
+      - name: Build WebTorrent-enabled libtorrent Python extension
+        shell: pwsh
+        run: |
+          cmake --build libtorrent-build --config Release --parallel 4 --target python-libtorrent
+          if ($LASTEXITCODE -ne 0) { throw 'libtorrent Python build failed' }
+          $module = Get-ChildItem libtorrent-build/bindings/python -Recurse -Filter 'libtorrent*.pyd' |
+            Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (!$module) {
+            Get-ChildItem libtorrent-build/bindings/python -Recurse -File
+            throw 'Custom Python extension was not produced'
+          }
+          Write-Host "Custom native module: $($module.FullName)"
+          "CUSTOM_LT_PYD=$($module.FullName)" >> $env:GITHUB_ENV
+
+      - name: Install Deluge dependencies without replacing custom libtorrent
+        shell: pwsh
+        run: |
+          python -m pip install -r requirements-ci.txt 'websockets==13.1' pyinstaller pygame
+          if ($LASTEXITCODE -ne 0) { throw 'Python requirements failed' }
+          python -m pip uninstall -y libtorrent
+          if ($LASTEXITCODE -ne 0) { throw 'Official libtorrent removal failed' }
+          $site = python -c "import sysconfig; print(sysconfig.get_path('platlib'))"
+          Copy-Item $env:CUSTOM_LT_PYD (Join-Path $site (Split-Path $env:CUSTOM_LT_PYD -Leaf)) -Force
+          python -m pip install --no-deps .
+          if ($LASTEXITCODE -ne 0) { throw 'Deluge installation failed' }
+          python setup.py install_scripts
+          if ($LASTEXITCODE -ne 0) { throw 'Deluge scripts installation failed' }
+
+      - name: Confirm native RTC support (reject published wheel)
+        shell: pwsh
+        run: |
+          @'
+          import pathlib
+          import libtorrent as lt
+          assert pathlib.Path(lt.__file__).resolve().name.startswith('libtorrent')
+          assert tuple(int(x) for x in lt.__version__.split('.')[:2]) >= (2, 1), lt.__version__
+          session = lt.session()
+          settings = session.get_settings()
+          assert 'webtorrent_stun_server' in settings, ('RTC support absent', lt.__file__)
+          assert 'webtorrent_enabled' in settings or 'webtorrent_stun_server' in settings
+          print('Verified native WebTorrent extension:', lt.__file__, lt.__version__)
+          print('RTC setting:', settings['webtorrent_stun_server'])
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'RTC module verification failed' }
+
+      - name: Run Windows Deluge WebTorrent regression tests
+        shell: pwsh
+        run: |
+          python -m pytest -vv -m webtorrent deluge/tests/test_webtorrent.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows WebTorrent regression failed' }
+
+      - name: Install GTK runtime and Python GTK bindings
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/deluge-torrent/gvsbuild-release/releases/download/gvsbuild-2026.1.0-afc4141a/gvsbuild-py3.10-vs17-x64.zip'
+          Invoke-WebRequest -Uri $url -OutFile C:\GTK.zip
+          7z x C:\GTK.zip -oc:\GTK
+          if ($LASTEXITCODE -ne 0) { throw 'GTK extraction failed' }
+          "C:\GTK\release\lib" >> $env:GITHUB_PATH
+          "C:\GTK\release\bin" >> $env:GITHUB_PATH
+          "C:\GTK\release" >> $env:GITHUB_PATH
+          python -m pip install --no-index --find-links="C:\GTK\release\python" pycairo PyGObject
+          if ($LASTEXITCODE -ne 0) { throw 'GTK Python bindings failed' }
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          'C:\Program Files (x86)\NSIS' >> $env:GITHUB_PATH
+
+      - name: Build PyInstaller frozen application
+        working-directory: packaging/win
+        shell: pwsh
+        run: |
+          pyinstaller --clean --noconfirm delugewin.spec --distpath freeze
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
+          $module = Get-ChildItem freeze/Deluge -Recurse -Filter 'libtorrent*.pyd' -File |
+            Select-Object -First 1
+          if (!$module) { throw 'libtorrent RTC extension missing from frozen application' }
+          Write-Host "Bundled libtorrent extension: $($module.FullName)"
+          if (!(Test-Path freeze/Deluge/deluged-debug.exe)) {
+            throw 'Deluge daemon executable missing from frozen application'
+          }
+          & .\freeze\Deluge\deluged-debug.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen daemon failed startup smoke test' }
+
+      - name: Build NSIS Windows x64 installer
+        working-directory: packaging/win
+        shell: pwsh
+        run: |
+          python setup_nsis.py
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS file manifest failed' }
+          & 'C:\Program Files (x86)\NSIS\makensis.exe' /Darch=x64 deluge-win-installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS compile failed' }
+          $installer = Get-ChildItem -File -Filter '*win64-setup.exe' | Select-Object -First 1
+          if (!$installer) { throw 'No Windows installer produced' }
+          Get-FileHash $installer.FullName -Algorithm SHA256 | Format-List
+
+      - name: Upload runnable Windows WebTorrent installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: deluge-webtorrent-libtorrent2.1-windows-x64
+          path: packaging/win/*win64-setup.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-webtorrent-smoke:
+    name: Install and verify on clean Windows x64
+    needs: windows-webtorrent-build
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: deluge-webtorrent-libtorrent2.1-windows-x64
+          path: installer
+
+      - name: Silent install and verify native binaries
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem installer -Recurse -Filter '*.exe' | Select-Object -First 1
+          if (!$installer) { throw 'Installer artifact missing' }
+          $p = Start-Process -Wait -PassThru -FilePath $installer.FullName -ArgumentList '/S'
+          if ($p.ExitCode -ne 0) { throw "Installer exited with $($p.ExitCode)" }
+          $install = Join-Path $env:ProgramFiles 'Deluge'
+          if (!(Test-Path "$install/deluged-debug.exe")) { throw 'Deluge daemon not installed' }
+          $native = Get-ChildItem $install -Recurse -Filter 'libtorrent*.pyd' -File |
+            Select-Object -First 1
+          if (!$native) { throw 'WebTorrent native extension missing after install' }
+          Write-Host "Installed WebTorrent extension: $($native.FullName)"
+          & "$install/deluged-debug.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Deluge daemon failed startup' }
+          & "$install/deluge-console.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Deluge console failed startup' }
