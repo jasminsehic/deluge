@@ -85,9 +85,7 @@ class TestTorrentmanager(BaseTestCase):
         pending = object()
         self.tm.torrents_status_requests.append(pending)
         with mock.patch.object(self.tm, 'handle_torrents_status_callback') as callback:
-            self.tm.on_alert_state_update(
-                SimpleNamespace(status=[native_status])
-            )
+            self.tm.on_alert_state_update(SimpleNamespace(status=[native_status]))
             callback.assert_called_once_with(pending)
         assert torrent.status is native_status
 
