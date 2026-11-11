@@ -1716,7 +1716,10 @@ class TorrentManager(component.Component):
 
         for t_status in alert.status:
             try:
-                torrent_id = str(t_status.info_hash)
+                if hasattr(t_status, 'info_hashes'):
+                    torrent_id = str(t_status.info_hashes.get_best())
+                else:
+                    torrent_id = str(t_status.info_hash)
             except RuntimeError:
                 continue
             if torrent_id in self.torrents:
