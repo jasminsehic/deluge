@@ -8,6 +8,7 @@ import os
 import shutil
 import warnings
 from base64 import b64encode
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -71,6 +72,36 @@ class TestTorrentmanager(BaseTestCase):
             del self.core
 
         return component.shutdown().addCallback(on_shutdown)
+
+    async def test_full_core_status_and_state_update(self):
+        """A modern state_update_alert must refresh GUI status and permit removal."""
+        filename = common.get_test_data_file('test.torrent')
+        with open(filename, 'rb') as source:
+            torrent_id = await self.core.add_torrent_file_async(
+                filename, b64encode(source.read()), {}
+            )
+        torrent = self.tm.torrents[torrent_id]
+        native_status = torrent.handle.status()
+        pending = object()
+        self.tm.torrents_status_requests.append(pending)
+        with mock.patch.object(self.tm, 'handle_torrents_status_callback') as callback:
+            self.tm.on_alert_state_update(
+                SimpleNamespace(status=[native_status])
+            )
+            callback.assert_called_once_with(pending)
+        assert torrent.status is native_status
+
+        # These are the bulk and per-torrent RPC requests the GTK UI needs.
+        all_status = self.core.get_torrent_status(torrent_id, [])
+        assert all_status['name']
+        assert isinstance(all_status['active_time'], int)
+        assert isinstance(all_status['creator'], str)
+        status = self.core.get_torrent_status(
+            torrent_id, ['name', 'peers', 'num_peers', 'num_seeds']
+        )
+        assert status['name']
+        assert isinstance(status['peers'], list)
+        assert self.tm.remove(torrent_id, False)
 
     @pytest_twisted.inlineCallbacks
     def test_remove_torrent(self):
