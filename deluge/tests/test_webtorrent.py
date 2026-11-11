@@ -119,6 +119,7 @@ class RelayWssTracker(LoopbackWssTracker):
         super().__init__(directory)
         self.offers_relayed = 0
         self.answers_relayed = 0
+        self.announces = []
 
     def run(self, context):
         from websockets.legacy.server import serve
@@ -154,6 +155,9 @@ class RelayWssTracker(LoopbackWssTracker):
                             self.answers_relayed += 1
                         continue
 
+                    self.announces.append(
+                        (len(request.get('offers', [])), request.get('left'))
+                    )
                     key = (info_hash, peer_id)
                     peers[key] = websocket
                     owned.add(key)
@@ -365,7 +369,7 @@ class TestWebTorrent(BaseTestCase):
                     'enable_upnp': False,
                     'enable_natpmp': False,
                     'validate_https_trackers': False,
-                    'webtorrent_stun_server': '',
+                    'webtorrent_stun_server': 'stun.l.google.com:19302',
                 }
                 self.core.apply_session_settings(settings)
 
@@ -410,7 +414,12 @@ class TestWebTorrent(BaseTestCase):
                     yield task.deferLater(reactor, 0.2, lambda: None)
 
                 target = download_dir / filename
-                assert tracker.offers_relayed > 0, 'No offer crossed the WSS tracker'
+                assert tracker.offers_relayed > 0, (
+                    'No offer crossed the WSS tracker '
+                    f'(announces={tracker.announces}, '
+                    f'answers={tracker.answers_relayed}, '
+                    f'seeder={seed_handle.status().is_seeding})'
+                )
                 assert tracker.answers_relayed > 0, 'No answer crossed the WSS tracker'
                 assert download_handle.status().is_seeding, (
                     'No completed RTC payload transfer '
