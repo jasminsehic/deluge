@@ -491,7 +491,8 @@ class TestWebTorrent(BaseTestCase):
                 # added paused must not transfer metadata or payload until
                 # explicitly resumed, even when the WSS seeder is available.
                 paused_status = self.core.get_torrent_status(
-                    torrent_id, ['paused', 'num_peers', 'num_seeds', 'total_payload_download']
+                    torrent_id,
+                    ['paused', 'num_peers', 'num_seeds', 'total_payload_download'],
                 )
                 assert paused_status['paused'], paused_status
                 paused_downloaded = paused_status['total_payload_download']
@@ -550,8 +551,15 @@ class TestWebTorrent(BaseTestCase):
                 deluge_status = self.core.get_torrent_status(
                     torrent_id,
                     [
-                        'files', 'file_progress', 'file_priorities', 'num_files',
-                        'num_peers', 'num_seeds', 'peers', 'progress', 'paused',
+                        'files',
+                        'file_progress',
+                        'file_priorities',
+                        'num_files',
+                        'num_peers',
+                        'num_seeds',
+                        'peers',
+                        'progress',
+                        'paused',
                     ],
                 )
                 assert deluge_status['num_files'] == 1, deluge_status
