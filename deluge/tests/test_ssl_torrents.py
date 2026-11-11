@@ -4,6 +4,7 @@
 # See LICENSE for more details.
 #
 import datetime
+import socket
 import time
 from pathlib import Path
 
@@ -111,6 +112,20 @@ iTniEzsEklfNUEZ59lwiDmJF1qmmH017PwIBAg==
 CA_CERT, CA_KEY = x509_ca()
 
 
+def _choose_listener_ports():
+    """Select two distinct free loopback ports for a daemon's TCP and SSL listeners."""
+    sockets = []
+    try:
+        for _ in range(2):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind(('127.0.0.1', 0))
+            sockets.append(sock)
+        return [sock.getsockname()[1] for sock in sockets]
+    finally:
+        for sock in sockets:
+            sock.close()
+
+
 async def _create_daemon_and_client(daemon_factory, config_dir, default_cert_name='*'):
     certificate_location = config_dir / 'ssl_torrents_certs'
     certificate_location.mkdir()
@@ -128,8 +143,15 @@ async def _create_daemon_and_client(daemon_factory, config_dir, default_cert_nam
     with open(certificate_location / 'default.dh.pem', 'w') as file:
         file.write(DH_PARAMS_PEM)
 
-    # Open SSL port and set the certificate location in Deluge configuration
+    # Use known, distinct loopback ports rather than a random listen port
+    # whose SSL companion may be unavailable on CI runners.
+    listen_port, ssl_port = _choose_listener_ports()
     config = Config('core.conf', config_dir=config_dir)
+    config.set_item('random_port', False)
+    config.set_item('listen_interface', '127.0.0.1')
+    config.set_item('listen_ports', [listen_port, listen_port])
+    config.set_item('ssl_listen_ports', [ssl_port, ssl_port])
+    config.set_item('listen_reuse_port', False)
     config.set_item('ssl_torrents', True)
     config.save()
 
@@ -200,9 +222,9 @@ class TestSslTorrents(BaseTestCase):
                 )
 
         seeder_port = await seeder.core.get_ssl_listen_port()
-        if seeder_port < 0:
+        if seeder_port <= 0:
             seeder_conf = await seeder.core.get_config()
-            seeder_port = seeder_conf['listen_random_port'] + 1
+            seeder_port = seeder_conf['ssl_listen_ports'][0]
         # Allow the asynchronous certificate-alert handler to supply the
         # default wildcard cert. Retry the direct dial if an early attempt is
         # rejected while the SSL torrent is still initializing.
