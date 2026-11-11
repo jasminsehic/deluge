@@ -673,8 +673,8 @@ class Torrent:
                 TorrentTrackerStatusEvent(self.torrent_id, self.tracker_status)
             )
 
-    def merge_trackers(self, torrent_info):
-        """Merges new trackers in torrent_info into torrent"""
+    def merge_trackers(self, torrent_info, file_params=None):
+        """Merge trackers from an added .torrent without changing its data."""
         log.info(
             'Adding any new trackers to torrent (%s) already in session...',
             self.torrent_id,
@@ -684,11 +684,22 @@ class Torrent:
         # Don't merge trackers if either torrent has private flag set.
         if torrent_info.priv() or self.get_status(['private'])['private']:
             log.info('Adding trackers aborted: Torrent has private flag set.')
-        else:
+            return
+
+        if file_params is not None:
+            # In ABI 4+ tracker lists live in add_torrent_params, not torrent_info.
+            for index, url in enumerate(file_params.trackers):
+                tier = (
+                    file_params.tracker_tiers[index]
+                    if index < len(file_params.tracker_tiers)
+                    else 0
+                )
+                self.handle.add_tracker({'url': url, 'tier': tier})
+        elif hasattr(torrent_info, 'trackers'):
             for tracker in torrent_info.trackers():
                 self.handle.add_tracker({'url': tracker.url, 'tier': tracker.tier})
-            # Update torrent.trackers from libtorrent handle.
-            self.set_trackers()
+        # Update torrent.trackers from libtorrent handle.
+        self.set_trackers()
 
     def update_state(self):
         """Updates the state, based on libtorrent's torrent state"""
