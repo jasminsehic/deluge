@@ -111,13 +111,13 @@ iTniEzsEklfNUEZ59lwiDmJF1qmmH017PwIBAg==
 CA_CERT, CA_KEY = x509_ca()
 
 
-async def _create_daemon_and_client(daemon_factory, config_dir):
+async def _create_daemon_and_client(daemon_factory, config_dir, default_cert_name='*'):
     certificate_location = config_dir / 'ssl_torrents_certs'
     certificate_location.mkdir()
 
     # Write default SSL certificates
     crt_pem, key_pem = x509_peer_certificate_pem(
-        torrent_name='*',
+        torrent_name=default_cert_name,
         ca_cert=CA_CERT,
         ca_key=CA_KEY,
     )
@@ -157,12 +157,19 @@ class TestSslTorrents(BaseTestCase):
         # Test the explicit and default certificates independently.  libtorrent
         # 1.2 can treat two simultaneous SSL torrent connections to the same
         # peer endpoint as duplicates, leaving one unconnected.
+        # The fallback certificate needs a SAN matching the torrent identity
+        # for libtorrent versions that enforce name matching strictly.
+        default_cert_name = '*' if explicit_certificate else torrent_name
         seeder = await _create_daemon_and_client(
-            daemon_factory=daemon_factory, config_dir=tmp_path_factory.mktemp('seeder')
+            daemon_factory=daemon_factory,
+            config_dir=tmp_path_factory.mktemp('seeder'),
+            default_cert_name=default_cert_name,
         )
         leecher_config_dir = tmp_path_factory.mktemp('leecher')
         leecher = await _create_daemon_and_client(
-            daemon_factory=daemon_factory, config_dir=leecher_config_dir
+            daemon_factory=daemon_factory,
+            config_dir=leecher_config_dir,
+            default_cert_name=default_cert_name,
         )
         destination_dir = tmp_path_factory.mktemp('destination')
 
