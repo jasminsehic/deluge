@@ -67,7 +67,9 @@ def test_production_libtorrent_module_exports():
                 and isinstance(node.value, ast.Name)
                 and node.value.id in aliases
             ):
-                references.setdefault(node.attr, set()).add(str(source.relative_to(SOURCE_ROOT)))
+                references.setdefault(node.attr, set()).add(
+                    str(source.relative_to(SOURCE_ROOT))
+                )
 
     # Only the guarded legacy path in metafile.py may use the removed API.
     optional_legacy = {'add_files': {'metafile.py'}}
