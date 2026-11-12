@@ -69,12 +69,12 @@ def test_production_libtorrent_module_exports():
             ):
                 references.setdefault(node.attr, set()).add(str(source.relative_to(SOURCE_ROOT)))
 
-    # This is intentionally guarded in metafile.makeinfo_lt by hasattr().
-    optional_legacy = {'add_files'}
+    # Only the guarded legacy path in metafile.py may use the removed API.
+    optional_legacy = {'add_files': {'metafile.py'}}
     missing = {
         name: sorted(paths)
         for name, paths in references.items()
-        if not hasattr(lt, name) and name not in optional_legacy
+        if not hasattr(lt, name) and paths != optional_legacy.get(name)
     }
     assert not missing, f'Missing libtorrent module exports: {missing}'
 
