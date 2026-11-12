@@ -923,13 +923,23 @@ class TorrentManager(component.Component):
             options['add_paused'] = t_state.paused
 
             magnet = t_state.magnet
-            torrent_info = self.get_torrent_info_from_file(
-                os.path.join(self.state_dir, t_state.torrent_id + '.torrent')
+            torrent_path = os.path.join(
+                self.state_dir, t_state.torrent_id + '.torrent'
             )
+            torrent_info = self.get_torrent_info_from_file(torrent_path)
+            filedump = None
+            if torrent_info is not None and getattr(lt, 'api_version', 1) >= 3:
+                # A modern torrent_info only stores immutable metadata.
+                # Restore tracker tiers and web seeds from the full .torrent.
+                try:
+                    filedump = Path(torrent_path).read_bytes()
+                except OSError as ex:
+                    log.warning('Unable to restore torrent file %s: %s', torrent_path, ex)
 
             try:
                 d = self.add_async(
                     torrent_info=torrent_info,
+                    filedump=filedump,
                     state=t_state,
                     options=options,
                     save_state=False,
