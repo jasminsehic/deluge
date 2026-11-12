@@ -537,6 +537,10 @@ class TestWebTorrent(BaseTestCase):
                 observed_deluge_peers = 0
                 observed_native_peers = 0
                 observed_aggregate_peers = 0
+                first_poll_at = reactor.seconds()
+                poll_count = 0
+                first_progress = None
+                peak_downloaded = 0
                 while reactor.seconds() < deadline:
                     # Aggregate status may lag behind the live peer list.
                     # Always sample the native connection list and the API
@@ -549,10 +553,17 @@ class TestWebTorrent(BaseTestCase):
                     observed_deluge_peers = max(
                         observed_deluge_peers, len(peer_status['peers'])
                     )
-                    observed_aggregate_peers = max(
-                        observed_aggregate_peers, download_handle.status().num_peers
+                    native_status = download_handle.status()
+                    poll_count += 1
+                    peak_downloaded = max(
+                        peak_downloaded, native_status.total_payload_download
                     )
-                    if download_handle.status().is_seeding:
+                    if first_progress is None and peak_downloaded:
+                        first_progress = reactor.seconds() - first_poll_at
+                    observed_aggregate_peers = max(
+                        observed_aggregate_peers, native_status.num_peers
+                    )
+                    if native_status.is_seeding:
                         break
                     if reactor.seconds() >= next_announce:
                         # RTC negotiations can fail transiently on CI runners;
@@ -560,8 +571,9 @@ class TestWebTorrent(BaseTestCase):
                         # any fallback transport or weakening payload checks.
                         download_handle.force_reannounce()
                         next_announce = reactor.seconds() + 12
-                    yield task.deferLater(reactor, 0.2, lambda: None)
+                    yield task.deferLater(reactor, 0.03, lambda: None)
 
+                elapsed = reactor.seconds() - first_poll_at
                 target = download_dir / filename
                 assert tracker.offers_relayed > 0, (
                     'No offer crossed the WSS tracker '
@@ -619,6 +631,9 @@ class TestWebTorrent(BaseTestCase):
                     'an active peer in the Peers API '
                     f'(native_peers={observed_native_peers}, '
                     f'aggregate_peers={observed_aggregate_peers}, '
+                    f'polls={poll_count}, elapsed={elapsed:.2f}s, '
+                    f'first_progress={first_progress}, '
+                    f'downloaded={peak_downloaded}/{len(payload)}, '
                     f'answers={tracker.answers_relayed})'
                 )
 
