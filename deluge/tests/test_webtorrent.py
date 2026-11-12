@@ -10,10 +10,11 @@ import threading
 from base64 import b64encode
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 import pytest_twisted
-from twisted.internet import reactor, task
+from twisted.internet import defer, reactor, task
 
 import deluge.component as component
 from deluge.conftest import BaseTestCase
@@ -303,8 +304,23 @@ class TestWebTorrent(BaseTestCase):
                 )
 
             try:
-                handle = self.core.torrentmanager.torrents[torrent_id].handle
+                manager = self.core.torrentmanager
+                handle = manager.torrents[torrent_id].handle
                 assert tracker_url in [entry['url'] for entry in handle.trackers()]
+
+                # On restart, loading torrent_info alone drops its trackers
+                # in ABI 4. Ensure the original torrent bytes are reloaded.
+                state = manager.create_state()
+                with (
+                    mock.patch.object(manager, 'open_state', return_value=state),
+                    mock.patch.object(manager, 'load_resume_data_file', return_value={}),
+                    mock.patch.object(
+                        manager, 'add_async', return_value=defer.succeed(torrent_id)
+                    ) as add_async,
+                ):
+                    manager.load_state()
+                restored = add_async.call_args.kwargs['filedump']
+                assert tracker_url in lt.load_torrent_buffer(restored).trackers
             finally:
                 self.core.remove_torrent(torrent_id, remove_data=False)
 
