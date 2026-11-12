@@ -934,7 +934,9 @@ class TorrentManager(component.Component):
                 try:
                     filedump = Path(torrent_path).read_bytes()
                 except OSError as ex:
-                    log.warning('Unable to restore torrent file %s: %s', torrent_path, ex)
+                    log.warning(
+                        'Unable to restore torrent file %s: %s', torrent_path, ex
+                    )
 
             try:
                 d = self.add_async(
