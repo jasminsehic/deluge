@@ -457,9 +457,6 @@ class TestWebTorrent(BaseTestCase):
                     'enable_natpmp': False,
                     'validate_https_trackers': False,
                     'webtorrent_stun_server': '',
-                    # Keep real but currently unproductive peers connected
-                    # long enough for normal GTK status polling.
-                    'close_redundant_connections': False,
                 }
                 self.core.apply_session_settings(settings)
                 seeder = lt.session({**settings, 'listen_interfaces': '127.0.0.1:0'})
