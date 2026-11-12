@@ -432,8 +432,9 @@ class TestWebTorrent(BaseTestCase):
             seed_dir.mkdir()
             download_dir.mkdir()
             filename = 'rtc-payload.bin'
-            # Keep the RTC connection alive long enough to inspect peer_info.
-            payload = bytes(range(256)) * 2048
+            # Exercise a real multi-piece RTC transfer long enough to observe
+            # a connected peer without relying on a post-completion snapshot.
+            payload = bytes(range(256)) * 512
             (seed_dir / filename).write_bytes(payload)
 
             tracker = RelayWssTracker(directory)
@@ -463,7 +464,10 @@ class TestWebTorrent(BaseTestCase):
                     'enable_natpmp': False,
                     'validate_https_trackers': False,
                     'webtorrent_stun_server': '',
-                    'download_rate_limit': 192 * 1024,
+                    # Loopback RTC can finish before a UI polling interval.
+                    # Throttle real payload traffic to expose live peer state.
+                    'download_rate_limit': 32 * 1024,
+                    'upload_rate_limit': 32 * 1024,
                 }
                 self.core.apply_session_settings(settings)
 
