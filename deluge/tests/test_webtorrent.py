@@ -462,9 +462,7 @@ class TestWebTorrent(BaseTestCase):
                     'close_redundant_connections': False,
                 }
                 self.core.apply_session_settings(settings)
-                seeder = lt.session(
-                    {**settings, 'listen_interfaces': '127.0.0.1:0'}
-                )
+                seeder = lt.session({**settings, 'listen_interfaces': '127.0.0.1:0'})
                 seed_params = lt.load_torrent_buffer(torrent_bytes)
                 seed_params.save_path = str(seed_dir)
                 seed_params.flags &= ~lt.torrent_flags.paused
