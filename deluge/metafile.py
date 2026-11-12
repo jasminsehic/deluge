@@ -281,7 +281,9 @@ def makeinfo_lt(
         # ABI 4+ removed add_files() and the file_storage constructor.
         # Modern create_torrent() accepts a list of create_file_entry.
         if os.path.isfile(path):
-            files = [lt.create_file_entry(os.path.basename(path), os.path.getsize(path))]
+            files = [
+                lt.create_file_entry(os.path.basename(path), os.path.getsize(path))
+            ]
         else:
             files = [
                 lt.create_file_entry(os.path.join(name, *p), os.path.getsize(f))
