@@ -518,6 +518,19 @@ class TestTorrent(BaseTestCase):
         torrent.torrent_id = 'abc123'
         assert Torrent.get_name(torrent) == 'abc123'
 
+    def test_magnet_uri_preserves_hash_and_wss_tracker(self):
+        """The ABI 4 make_magnet_uri API requires add_torrent_params."""
+        from urllib.parse import unquote
+
+        handle = self.session.add_torrent(self.get_torrent_atp('test.torrent'))
+        torrent = Torrent(handle, {})
+        tracker_url = 'wss://tracker.example.com/announce'
+        handle.add_tracker({'url': tracker_url, 'tier': 1})
+
+        magnet = unquote(torrent.get_magnet_uri())
+        assert torrent.torrent_id in magnet
+        assert tracker_url in magnet
+
     def test_get_name_unicode(self):
         """Test retrieving a unicode torrent name from libtorrent."""
         atp = self.get_torrent_atp('unicode_file.torrent')
