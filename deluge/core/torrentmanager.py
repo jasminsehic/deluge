@@ -923,9 +923,7 @@ class TorrentManager(component.Component):
             options['add_paused'] = t_state.paused
 
             magnet = t_state.magnet
-            torrent_path = os.path.join(
-                self.state_dir, t_state.torrent_id + '.torrent'
-            )
+            torrent_path = os.path.join(self.state_dir, t_state.torrent_id + '.torrent')
             torrent_info = self.get_torrent_info_from_file(torrent_path)
             filedump = None
             if torrent_info is not None and getattr(lt, 'api_version', 1) >= 3:
