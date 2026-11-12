@@ -430,7 +430,8 @@ class TestWebTorrent(BaseTestCase):
             seed_dir.mkdir()
             download_dir.mkdir()
             filename = 'rtc-payload.bin'
-            payload = bytes(range(256)) * 192
+            # Keep the RTC connection alive long enough to inspect peer_info.
+            payload = bytes(range(256)) * 2048
             (seed_dir / filename).write_bytes(payload)
 
             tracker = RelayWssTracker(directory)
@@ -460,6 +461,7 @@ class TestWebTorrent(BaseTestCase):
                     'enable_natpmp': False,
                     'validate_https_trackers': False,
                     'webtorrent_stun_server': '',
+                    'download_rate_limit': 192 * 1024,
                 }
                 self.core.apply_session_settings(settings)
 
@@ -526,7 +528,13 @@ class TestWebTorrent(BaseTestCase):
 
                 deadline = reactor.seconds() + 90
                 next_announce = reactor.seconds() + 12
+                observed_deluge_peers = 0
                 while reactor.seconds() < deadline:
+                    if download_handle.status().num_peers:
+                        peer_status = self.core.get_torrent_status(torrent_id, ['peers'])
+                        observed_deluge_peers = max(
+                            observed_deluge_peers, len(peer_status['peers'])
+                        )
                     if download_handle.status().is_seeding:
                         break
                     if reactor.seconds() >= next_announce:
@@ -561,6 +569,10 @@ class TestWebTorrent(BaseTestCase):
                     f'download_error={download_handle.status().errc.message()})'
                 )
                 assert target.read_bytes() == payload
+                assert observed_deluge_peers > 0, (
+                    'Native RTC transfer succeeded without Deluge reporting '
+                    'an active peer in the Peers API'
+                )
 
                 # Verify the status shape consumed by the Files and Peers
                 # tabs, not only the raw native torrent_handle state.
