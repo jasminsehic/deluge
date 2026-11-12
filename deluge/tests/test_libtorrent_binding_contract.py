@@ -14,7 +14,6 @@ from deluge._libtorrent import lt
 
 from . import common
 
-
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
