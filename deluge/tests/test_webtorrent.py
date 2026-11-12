@@ -531,14 +531,23 @@ class TestWebTorrent(BaseTestCase):
                 deadline = reactor.seconds() + 90
                 next_announce = reactor.seconds() + 12
                 observed_deluge_peers = 0
+                observed_native_peers = 0
+                observed_aggregate_peers = 0
                 while reactor.seconds() < deadline:
-                    if download_handle.status().num_peers:
-                        peer_status = self.core.get_torrent_status(
-                            torrent_id, ['peers']
-                        )
-                        observed_deluge_peers = max(
-                            observed_deluge_peers, len(peer_status['peers'])
-                        )
+                    # Aggregate status may lag behind the live peer list.
+                    # Always sample the native connection list and the API
+                    # consumed by GTK, even when num_peers is temporarily 0.
+                    native_peers = download_handle.get_peer_info()
+                    peer_status = self.core.get_torrent_status(torrent_id, ['peers'])
+                    observed_native_peers = max(
+                        observed_native_peers, len(native_peers)
+                    )
+                    observed_deluge_peers = max(
+                        observed_deluge_peers, len(peer_status['peers'])
+                    )
+                    observed_aggregate_peers = max(
+                        observed_aggregate_peers, download_handle.status().num_peers
+                    )
                     if download_handle.status().is_seeding:
                         break
                     if reactor.seconds() >= next_announce:
@@ -572,10 +581,41 @@ class TestWebTorrent(BaseTestCase):
                     f'download_state={download_handle.status().state}, '
                     f'download_error={download_handle.status().errc.message()})'
                 )
-                assert target.read_bytes() == payload
+                # A torrent can reach the seeding state while its disk writes
+                # are still cached. Verify on-disk bytes only after libtorrent
+                # confirms that the cache was flushed.
+                cache_flushed = threading.Event()
+
+                def on_cache_flushed(alert):
+                    if alert.handle == download_handle:
+                        cache_flushed.set()
+
+                self.core.alertmanager.register_handler(
+                    'cache_flushed_alert', on_cache_flushed
+                )
+                try:
+                    download_handle.flush_cache()
+                    flush_deadline = reactor.seconds() + 30
+                    while (
+                        not cache_flushed.is_set()
+                        and reactor.seconds() < flush_deadline
+                    ):
+                        yield task.deferLater(reactor, 0.1, lambda: None)
+                    assert cache_flushed.is_set(), (
+                        'Timed out waiting for native cache_flushed_alert'
+                    )
+                finally:
+                    self.core.alertmanager.deregister_handler(on_cache_flushed)
+
+                assert target.read_bytes() == payload, (
+                    'The RTC payload on disk differs after cache_flushed_alert'
+                )
                 assert observed_deluge_peers > 0, (
                     'Native RTC transfer succeeded without Deluge reporting '
-                    'an active peer in the Peers API'
+                    'an active peer in the Peers API '
+                    f'(native_peers={observed_native_peers}, '
+                    f'aggregate_peers={observed_aggregate_peers}, '
+                    f'answers={tracker.answers_relayed})'
                 )
 
                 # Verify the status shape consumed by the Files and Peers
