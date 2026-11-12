@@ -421,6 +421,117 @@ class TestWebTorrent(BaseTestCase):
                 tracker.stop()
 
     @pytest_twisted.inlineCallbacks
+    def test_wss_rtc_peer_visible_while_download_is_skipped(self):
+        """A live RTC peer must appear in Deluge before any pieces are requested."""
+        from deluge._libtorrent import lt
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            seed_dir = root / 'seed'
+            download_dir = root / 'download'
+            seed_dir.mkdir()
+            download_dir.mkdir()
+            filename = 'rtc-peers.bin'
+            payload = bytes(range(256)) * 64
+            (seed_dir / filename).write_bytes(payload)
+
+            tracker = RelayWssTracker(directory)
+            tracker.start()
+            seeder = None
+            torrent_id = None
+            try:
+                tracker_url = f'wss://127.0.0.1:{tracker.port}/announce'
+                creator = lt.create_torrent(
+                    [lt.create_file_entry(filename, len(payload))],
+                    16384,
+                    lt.create_torrent.v1_only,
+                )
+                creator.set_hash(0, hashlib.sha1(payload).digest())
+                creator.add_tracker(tracker_url)
+                torrent_bytes = lt.bencode(creator.generate())
+
+                settings = {
+                    'enable_dht': False,
+                    'enable_lsd': False,
+                    'enable_upnp': False,
+                    'enable_natpmp': False,
+                    'validate_https_trackers': False,
+                    'webtorrent_stun_server': '',
+                }
+                self.core.apply_session_settings(settings)
+                seeder = lt.session(
+                    {**settings, 'listen_interfaces': '127.0.0.1:0'}
+                )
+                seed_params = lt.load_torrent_buffer(torrent_bytes)
+                seed_params.save_path = str(seed_dir)
+                seed_params.flags &= ~lt.torrent_flags.paused
+                seed_params.flags &= ~lt.torrent_flags.auto_managed
+                seed_handle = seeder.add_torrent(seed_params)
+                deadline = reactor.seconds() + 15
+                while (
+                    not seed_handle.status().is_seeding
+                    and reactor.seconds() < deadline
+                ):
+                    yield task.deferLater(reactor, 0.2, lambda: None)
+                assert seed_handle.status().is_seeding
+
+                # Unlike the rapid magnet transfer test, the receiver knows
+                # its metadata and elects not to download the file. The real
+                # WSS/RTC connection can then be inspected without racing a
+                # completed loopback transfer or inserting fabricated peers.
+                torrent_id = yield self.core.add_torrent_file_async(
+                    'rtc-peers.torrent',
+                    b64encode(torrent_bytes),
+                    {
+                        'download_location': str(download_dir),
+                        'add_paused': True,
+                        'auto_managed': False,
+                        'file_priorities': [0],
+                    },
+                )
+                handle = self.core.torrentmanager.torrents[torrent_id].handle
+                assert list(handle.get_file_priorities()) == [0]
+                self.core.resume_torrent(torrent_id)
+                handle.force_reannounce()
+
+                deadline = reactor.seconds() + 90
+                next_announce = reactor.seconds() + 12
+                max_native_peers = 0
+                max_aggregate_peers = 0
+                visible_peers = []
+                while reactor.seconds() < deadline:
+                    native_peers = handle.get_peer_info()
+                    status = self.core.get_torrent_status(torrent_id, ['peers'])
+                    max_native_peers = max(max_native_peers, len(native_peers))
+                    max_aggregate_peers = max(
+                        max_aggregate_peers, handle.status().num_peers
+                    )
+                    visible_peers = status['peers']
+                    if visible_peers:
+                        break
+                    if reactor.seconds() >= next_announce:
+                        handle.force_reannounce()
+                        next_announce = reactor.seconds() + 12
+                    yield task.deferLater(reactor, 0.1, lambda: None)
+
+                assert visible_peers, (
+                    'Live WSS/RTC peer was not exposed through Deluge Peers API '
+                    f'(native_peers={max_native_peers}, '
+                    f'aggregate_peers={max_aggregate_peers}, '
+                    f'offers={tracker.offers_relayed}, '
+                    f'answers={tracker.answers_relayed})'
+                )
+                assert visible_peers[0]['ip']
+                assert isinstance(visible_peers[0]['client'], str)
+                assert handle.status().total_payload_download == 0
+            finally:
+                if torrent_id is not None:
+                    self.core.remove_torrent(torrent_id, remove_data=False)
+                if seeder is not None:
+                    seeder.pause()
+                tracker.stop()
+
+    @pytest_twisted.inlineCallbacks
     def test_wss_discovers_rtc_peer_and_transfers_verified_pieces(self):
         """Download payload from a WSS-discovered RTC seeder into Deluge."""
         from deluge._libtorrent import lt
@@ -626,16 +737,8 @@ class TestWebTorrent(BaseTestCase):
                 assert target.read_bytes() == payload, (
                     'The RTC payload on disk differs after cache_flushed_alert'
                 )
-                assert observed_deluge_peers > 0, (
-                    'Native RTC transfer succeeded without Deluge reporting '
-                    'an active peer in the Peers API '
-                    f'(native_peers={observed_native_peers}, '
-                    f'aggregate_peers={observed_aggregate_peers}, '
-                    f'polls={poll_count}, elapsed={elapsed:.2f}s, '
-                    f'first_progress={first_progress}, '
-                    f'downloaded={peak_downloaded}/{len(payload)}, '
-                    f'answers={tracker.answers_relayed})'
-                )
+                # Peer visibility is asserted in the separate real-connection
+                # test above; this transfer can complete between UI polls.
 
                 # Verify the status shape consumed by the Files and Peers
                 # tabs, not only the raw native torrent_handle state.
