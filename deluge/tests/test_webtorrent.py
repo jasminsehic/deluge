@@ -313,7 +313,9 @@ class TestWebTorrent(BaseTestCase):
                 state = manager.create_state()
                 with (
                     mock.patch.object(manager, 'open_state', return_value=state),
-                    mock.patch.object(manager, 'load_resume_data_file', return_value={}),
+                    mock.patch.object(
+                        manager, 'load_resume_data_file', return_value={}
+                    ),
                     mock.patch.object(
                         manager, 'add_async', return_value=defer.succeed(torrent_id)
                     ) as add_async,
@@ -531,7 +533,9 @@ class TestWebTorrent(BaseTestCase):
                 observed_deluge_peers = 0
                 while reactor.seconds() < deadline:
                     if download_handle.status().num_peers:
-                        peer_status = self.core.get_torrent_status(torrent_id, ['peers'])
+                        peer_status = self.core.get_torrent_status(
+                            torrent_id, ['peers']
+                        )
                         observed_deluge_peers = max(
                             observed_deluge_peers, len(peer_status['peers'])
                         )
