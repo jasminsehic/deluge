@@ -421,8 +421,8 @@ class TestWebTorrent(BaseTestCase):
                 tracker.stop()
 
     @pytest_twisted.inlineCallbacks
-    def test_wss_rtc_peer_visible_while_download_is_skipped(self):
-        """A live RTC peer must appear in Deluge before any pieces are requested."""
+    def test_wss_rtc_peer_visible_between_two_leechers(self):
+        """Two incomplete RTC clients must expose their connected peers."""
         from deluge._libtorrent import lt
 
         with tempfile.TemporaryDirectory() as directory:
@@ -433,8 +433,8 @@ class TestWebTorrent(BaseTestCase):
             download_dir.mkdir()
             filename = 'rtc-peers.bin'
             payload = bytes(range(256)) * 64
-            (seed_dir / filename).write_bytes(payload)
-
+            # Neither client starts with the file. Both are genuine
+            # leechers requesting pieces, avoiding an instantaneous transfer.
             tracker = RelayWssTracker(directory)
             tracker.start()
             seeder = None
@@ -467,18 +467,11 @@ class TestWebTorrent(BaseTestCase):
                 seed_params.flags &= ~lt.torrent_flags.paused
                 seed_params.flags &= ~lt.torrent_flags.auto_managed
                 seed_handle = seeder.add_torrent(seed_params)
-                deadline = reactor.seconds() + 15
-                while (
-                    not seed_handle.status().is_seeding
-                    and reactor.seconds() < deadline
-                ):
-                    yield task.deferLater(reactor, 0.2, lambda: None)
-                assert seed_handle.status().is_seeding
+                assert not seed_handle.status().is_seeding
 
-                # Unlike the rapid magnet transfer test, the receiver knows
-                # its metadata and elects not to download the file. The real
-                # WSS/RTC connection can then be inspected without racing a
-                # completed loopback transfer or inserting fabricated peers.
+                # Both peers want the file but neither currently has pieces.
+                # The real WSS/RTC connection can be inspected without racing
+                # a completed loopback transfer or inserting fabricated peers.
                 torrent_id = yield self.core.add_torrent_file_async(
                     'rtc-peers.torrent',
                     b64encode(torrent_bytes),
@@ -486,11 +479,10 @@ class TestWebTorrent(BaseTestCase):
                         'download_location': str(download_dir),
                         'add_paused': True,
                         'auto_managed': False,
-                        'file_priorities': [0],
                     },
                 )
                 handle = self.core.torrentmanager.torrents[torrent_id].handle
-                assert list(handle.get_file_priorities()) == [0]
+                assert handle.get_file_priorities()[0] > 0
                 self.core.resume_torrent(torrent_id)
                 handle.force_reannounce()
 
@@ -515,7 +507,7 @@ class TestWebTorrent(BaseTestCase):
                     yield task.deferLater(reactor, 0.1, lambda: None)
 
                 assert visible_peers, (
-                    'Live WSS/RTC peer was not exposed through Deluge Peers API '
+                    'Live WSS/RTC leecher was not exposed through Deluge Peers API '
                     f'(native_peers={max_native_peers}, '
                     f'aggregate_peers={max_aggregate_peers}, '
                     f'offers={tracker.offers_relayed}, '
