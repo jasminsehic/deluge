@@ -153,6 +153,20 @@ FILE_PRIORITY = {
 
 del _
 
+# Cache keys available in every supported libtorrent release. Keep this
+# constant for consumers using a fixed list; Preferences fetches all session
+# status fields to select version-specific cache metrics.
+DISK_CACHE_KEYS = [
+    'disk.num_blocks_read',
+    'disk.num_blocks_written',
+    'disk.num_read_ops',
+    'disk.num_write_ops',
+    'read_hit_ratio',
+    'write_hit_ratio',
+    'disk.disk_blocks_in_use',
+]
+
+
 def get_disk_cache_block_metric(status):
     """Select the available disk-cache block metric across libtorrent versions.
 
