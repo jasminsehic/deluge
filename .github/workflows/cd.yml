@@ -26,7 +26,7 @@ jobs:
       matrix:
         arch: [x64]
         python: ["3.10"]
-        libtorrent: [2.0.11, 1.2.19]
+        libtorrent: [2.0.11, 1.2.19, 2.1.1]
 
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -41,6 +41,12 @@ jobs:
           ref: ${{ github.event.inputs.ref }}
           fetch-depth: 0
           path: deluge_src
+
+      - name: Set fork development package version for PR builds
+        if: github.event_name == 'pull_request'
+        run: |
+          Set-Content -Path RELEASE-VERSION -Value '2.2.0.dev0' -NoNewline
+          Set-Content -Path deluge_src/RELEASE-VERSION -Value '2.2.0.dev0' -NoNewline
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -121,7 +127,7 @@ jobs:
       matrix:
         arch: [x64]
         python: ["3.10"]
-        libtorrent: [2.0.11]
+        libtorrent: [2.0.11, 1.2.19, 2.1.1]
     steps:
       - name: Download installer
         uses: actions/download-artifact@v7
